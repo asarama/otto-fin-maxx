@@ -20,12 +20,12 @@ export const load: PageServerLoad = async () => {
   const reader = await conn.runAndReadAll(
     `SELECT bcm.id, bcm.amount_cents,
             bc.name AS category_name, b.name AS budget_name, o.name AS owner_name,
-            COALESCE(SUM(-at.amount_cents), 0) AS spent_cents
+            COALESCE(SUM(-tx.amount_cents), 0) AS spent_cents
      FROM budget_category_months bcm
      JOIN budget_categories bc ON bc.id = bcm.budget_category_id
      JOIN budgets b ON b.id = bc.budget_id
      JOIN owners o ON o.id = b.owner_id
-     LEFT JOIN account_transactions at ON at.budget_category_month_id = bcm.id
+     LEFT JOIN account_transactions tx ON tx.budget_category_month_id = bcm.id
      WHERE bcm.month = ?
      GROUP BY bcm.id, bcm.amount_cents, bc.name, b.name, o.name
      ORDER BY spent_cents - bcm.amount_cents DESC`,
