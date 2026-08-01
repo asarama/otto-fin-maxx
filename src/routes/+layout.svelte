@@ -1,5 +1,6 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
+	import { resolve } from '$app/paths';
 	let { children } = $props();
 
 	const links = [
@@ -9,8 +10,8 @@
 		{ href: '/budgets', label: 'Budgets' },
 		{ href: '/accounts', label: 'Accounts' },
 		{ href: '/vendors', label: 'Vendors' },
-		{ href: '/rules', label: 'Rules' }
-	];
+		{ href: '/rules', label: 'Rules' },
+	] as const;
 </script>
 
 <svelte:head>
@@ -19,8 +20,8 @@
 
 <nav>
 	<ul>
-		{#each links as link}
-			<li><a href={link.href}>{link.label}</a></li>
+		{#each links as link (link.href)}
+			<li><a href={resolve(link.href)}>{link.label}</a></li>
 		{/each}
 	</ul>
 </nav>
@@ -44,7 +45,8 @@
 		border-collapse: collapse;
 		width: 100%;
 	}
-	:global(th), :global(td) {
+	:global(th),
+	:global(td) {
 		border: 1px solid #ccc;
 		padding: 0.25rem 0.5rem;
 		text-align: left;

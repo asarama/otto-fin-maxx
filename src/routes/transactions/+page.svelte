@@ -22,7 +22,7 @@
 		await fetch(`/api/transactions/${txId}/assign`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ budgetCategoryId, month: txMonth })
+			body: JSON.stringify({ budgetCategoryId, month: txMonth }),
 		});
 		invalidateAll();
 	}
@@ -30,12 +30,17 @@
 
 <h1>Transactions</h1>
 
-<form onsubmit={(e) => { e.preventDefault(); applyFilters(); }}>
+<form
+	onsubmit={(e) => {
+		e.preventDefault();
+		applyFilters();
+	}}
+>
 	<input bind:value={search} placeholder="Search description" />
 	<input type="month" bind:value={month} />
 	<select bind:value={account}>
 		<option value="">All accounts</option>
-		{#each data.accounts as a}
+		{#each data.accounts as a (a.id)}
 			<option value={a.id}>{a.name}</option>
 		{/each}
 	</select>
@@ -62,7 +67,7 @@
 		</tr>
 	</thead>
 	<tbody>
-		{#each data.transactions as tx}
+		{#each data.transactions as tx (tx.id)}
 			<tr>
 				<td>{tx.postedDate}</td>
 				<td>{tx.description}</td>
@@ -72,9 +77,16 @@
 				<td>{tx.categoryName ?? '—'}</td>
 				<td>{tx.assignmentStatus}</td>
 				<td>
-					<select onchange={(e) => assign(tx.id, (e.currentTarget as HTMLSelectElement).value, tx.postedDate.slice(0, 7))}>
+					<select
+						onchange={(e) =>
+							assign(
+								tx.id,
+								(e.currentTarget as HTMLSelectElement).value,
+								tx.postedDate.slice(0, 7)
+							)}
+					>
 						<option value="">assign category</option>
-						{#each data.budgetCategories as cat}
+						{#each data.budgetCategories as cat (cat.id)}
 							<option value={cat.id}>{cat.name}</option>
 						{/each}
 					</select>

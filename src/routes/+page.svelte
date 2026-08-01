@@ -1,15 +1,20 @@
 <script lang="ts">
 	import { centsToDollars } from '$lib/money';
+	import { resolve } from '$app/paths';
 	let { data } = $props();
 </script>
 
 <h1>Dashboard — {data.month}</h1>
 
 {#if data.unreviewed > 0}
-	<p><a href="/review">{data.unreviewed} transaction(s) need review</a></p>
+	<p><a href={resolve('/review')}>{data.unreviewed} transaction(s) need review</a></p>
 {/if}
 
-<p>Total limit: {centsToDollars(data.totalLimit)} &middot; Total spent: {centsToDollars(data.totalSpent)}</p>
+<p>
+	Total limit: {centsToDollars(data.totalLimit)} &middot; Total spent: {centsToDollars(
+		data.totalSpent
+	)}
+</p>
 
 <table>
 	<thead>
@@ -23,7 +28,7 @@
 		</tr>
 	</thead>
 	<tbody>
-		{#each data.categories as cat}
+		{#each data.categories as cat (cat.id)}
 			<tr>
 				<td>{cat.ownerName}</td>
 				<td>{cat.budgetName}</td>

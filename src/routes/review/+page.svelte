@@ -1,19 +1,18 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { centsToDollars } from '$lib/money';
+	import { SvelteSet } from 'svelte/reactivity';
 	let { data } = $props();
 
-	let selected = $state<Set<string>>(new Set());
+	let selected = new SvelteSet<string>();
 	let batchCategoryId = $state('');
 	let ruleCategoryId = $state('');
 	let ruleVendorId = $state('');
 	let ruleName = $state('');
 
 	function toggle(txId: string) {
-		const next = new Set(selected);
-		if (next.has(txId)) next.delete(txId);
-		else next.add(txId);
-		selected = next;
+		if (selected.has(txId)) selected.delete(txId);
+		else selected.add(txId);
 	}
 
 	async function batchAssign() {
@@ -22,9 +21,9 @@
 		await fetch('/api/review/batch', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ txIds, budgetCategoryId: batchCategoryId })
+			body: JSON.stringify({ txIds, budgetCategoryId: batchCategoryId }),
 		});
-		selected = new Set();
+		selected.clear();
 		invalidateAll();
 	}
 
@@ -36,8 +35,8 @@
 				name: ruleName || tx.description.slice(0, 40),
 				description: tx.description,
 				vendorId: ruleVendorId || tx.vendorId,
-				budgetCategoryId: ruleCategoryId
-			})
+				budgetCategoryId: ruleCategoryId,
+			}),
 		});
 		invalidateAll();
 	}
@@ -49,10 +48,15 @@
 	<p>Nothing to review.</p>
 {/if}
 
-<form onsubmit={(e) => { e.preventDefault(); batchAssign(); }}>
+<form
+	onsubmit={(e) => {
+		e.preventDefault();
+		batchAssign();
+	}}
+>
 	<select bind:value={batchCategoryId}>
 		<option value="" disabled>Assign selected to category</option>
-		{#each data.categories as cat}
+		{#each data.categories as cat (cat.id)}
 			<option value={cat.id}>{cat.name}</option>
 		{/each}
 	</select>
@@ -60,10 +64,11 @@
 </form>
 
 <ul>
-	{#each data.transactions as tx}
+	{#each data.transactions as tx (tx.id)}
 		<li>
 			<input type="checkbox" checked={selected.has(tx.id)} onchange={() => toggle(tx.id)} />
-			{tx.postedDate} &middot; {centsToDollars(tx.amountCents)} &middot; <strong>{tx.description}</strong>
+			{tx.postedDate} &middot; {centsToDollars(tx.amountCents)} &middot;
+			<strong>{tx.description}</strong>
 			({tx.accountName}{tx.vendorName ? `, ${tx.vendorName}` : ''})
 
 			<details>
@@ -71,13 +76,13 @@
 				<input bind:value={ruleName} placeholder="Rule name" />
 				<select bind:value={ruleVendorId}>
 					<option value="">No vendor</option>
-					{#each data.vendors as v}
+					{#each data.vendors as v (v.id)}
 						<option value={v.id}>{v.name}</option>
 					{/each}
 				</select>
 				<select bind:value={ruleCategoryId}>
 					<option value="" disabled>Category</option>
-					{#each data.categories as cat}
+					{#each data.categories as cat (cat.id)}
 						<option value={cat.id}>{cat.name}</option>
 					{/each}
 				</select>

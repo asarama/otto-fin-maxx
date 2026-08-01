@@ -13,7 +13,7 @@
 		await fetch('/api/accounts', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ name, bank, type })
+			body: JSON.stringify({ name, bank, type }),
 		});
 		name = '';
 		invalidateAll();
@@ -36,7 +36,7 @@
 		await fetch(`/api/accounts/${renameFor}`, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ name: renameName })
+			body: JSON.stringify({ name: renameName }),
 		});
 		renameFor = '';
 		renameName = '';
@@ -64,7 +64,7 @@
 {/if}
 
 <ul>
-	{#each data.accounts as account}
+	{#each data.accounts as account (account.id)}
 		<li>
 			{#if renameFor === account.id}
 				<form onsubmit={submitRename}>

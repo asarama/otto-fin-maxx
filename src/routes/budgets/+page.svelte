@@ -15,7 +15,7 @@
 		await fetch('/api/budgets', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ ownerId, name: budgetName })
+			body: JSON.stringify({ ownerId, name: budgetName }),
 		});
 		budgetName = '';
 		invalidateAll();
@@ -26,7 +26,7 @@
 		await fetch(`/api/budgets/${categoryBudgetId}/categories`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ name: categoryName, monthlyLimitCents: categoryLimit })
+			body: JSON.stringify({ name: categoryName, monthlyLimitCents: categoryLimit }),
 		});
 		categoryName = '';
 		categoryLimit = '';
@@ -37,7 +37,7 @@
 		await fetch(`/api/budget-categories/${catId}`, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ monthlyLimitCents })
+			body: JSON.stringify({ monthlyLimitCents }),
 		});
 		invalidateAll();
 	}
@@ -60,7 +60,7 @@
 <form onsubmit={addBudget}>
 	<select bind:value={ownerId}>
 		<option value="" disabled>Owner</option>
-		{#each data.owners as owner}
+		{#each data.owners as owner (owner.id)}
 			<option value={owner.id}>{owner.name}</option>
 		{/each}
 	</select>
@@ -72,7 +72,7 @@
 <form onsubmit={addCategory}>
 	<select bind:value={categoryBudgetId}>
 		<option value="" disabled>Budget</option>
-		{#each data.budgets as budget}
+		{#each data.budgets as budget (budget.id)}
 			<option value={budget.id}>{budget.name}</option>
 		{/each}
 	</select>
@@ -94,7 +94,7 @@
 		</tr>
 	</thead>
 	<tbody>
-		{#each data.months as m}
+		{#each data.months as m (m.id)}
 			<tr>
 				<td>{m.ownerName}</td>
 				<td>{m.budgetName}</td>
@@ -107,7 +107,8 @@
 						type="number"
 						step="0.01"
 						value={centsToDollars(m.amountCents).replace(/[$,]/g, '')}
-						onchange={(e) => updateLimit(m.budgetCategoryId, (e.currentTarget as HTMLInputElement).value)}
+						onchange={(e) =>
+							updateLimit(m.budgetCategoryId, (e.currentTarget as HTMLInputElement).value)}
 					/>
 				</td>
 			</tr>

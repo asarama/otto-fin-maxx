@@ -5,10 +5,10 @@ import { listBudgetCategories } from '$lib/server/repos/budgets';
 import { listVendors } from '$lib/server/repos/vendors';
 
 export const load: PageServerLoad = async () => {
-  const conn = await getDb();
-  return {
-    rules: await listRules(conn),
-    categories: await listBudgetCategories(conn),
-    vendors: await listVendors(conn)
-  };
+	const conn = await getDb();
+	return {
+		rules: await listRules(conn),
+		categories: await listBudgetCategories(conn),
+		vendors: await listVendors(conn),
+	};
 };

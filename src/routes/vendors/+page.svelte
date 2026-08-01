@@ -5,17 +5,19 @@
 	let name = $state('');
 	let aliases = $state('');
 	let newAlias = $state('');
-	let aliasForVendor = $state('');
 	let keepId = $state('');
 	let removeId = $state('');
 
 	async function addVendor(e: SubmitEvent) {
 		e.preventDefault();
-		const list = aliases.split(',').map((s) => s.trim()).filter(Boolean);
+		const list = aliases
+			.split(',')
+			.map((s) => s.trim())
+			.filter(Boolean);
 		await fetch('/api/vendors', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ name, aliases: list })
+			body: JSON.stringify({ name, aliases: list }),
 		});
 		name = '';
 		aliases = '';
@@ -26,10 +28,9 @@
 		await fetch(`/api/vendors/${vendorId}/aliases`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ name: newAlias })
+			body: JSON.stringify({ name: newAlias }),
 		});
 		newAlias = '';
-		aliasForVendor = '';
 		invalidateAll();
 	}
 
@@ -37,7 +38,7 @@
 		await fetch('/api/vendors/merge', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ keepId, removeId })
+			body: JSON.stringify({ keepId, removeId }),
 		});
 		keepId = '';
 		removeId = '';
@@ -54,16 +55,21 @@
 </form>
 
 <h2>Merge vendors</h2>
-<form onsubmit={(e) => { e.preventDefault(); merge(); }}>
+<form
+	onsubmit={(e) => {
+		e.preventDefault();
+		merge();
+	}}
+>
 	<select bind:value={keepId}>
 		<option value="" disabled>Keep</option>
-		{#each data.vendors as v}
+		{#each data.vendors as v (v.id)}
 			<option value={v.id}>{v.name}</option>
 		{/each}
 	</select>
 	<select bind:value={removeId}>
 		<option value="" disabled>Merge into keep</option>
-		{#each data.vendors as v}
+		{#each data.vendors as v (v.id)}
 			<option value={v.id}>{v.name}</option>
 		{/each}
 	</select>
@@ -71,13 +77,13 @@
 </form>
 
 <ul>
-	{#each data.vendors as vendor}
+	{#each data.vendors as vendor (vendor.id)}
 		<li>
 			<strong>{vendor.name}</strong>
 			{#if vendor.aliases.length > 0}
 				<em>({vendor.aliases.join(', ')})</em>
 			{/if}
-			<input bind:value={newAlias} placeholder="New alias" onchange={() => (aliasForVendor = vendor.id)} />
+			<input bind:value={newAlias} placeholder="New alias" />
 			<button onclick={() => addAlias(vendor.id)}>Add alias</button>
 		</li>
 	{/each}

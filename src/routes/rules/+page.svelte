@@ -34,8 +34,8 @@
 				amountOperator,
 				amountCents: amountCents === '' ? null : Math.round(Number(amountCents) * 100),
 				budgetCategoryId,
-				vendorIds: selectedVendors
-			})
+				vendorIds: selectedVendors,
+			}),
 		});
 		name = '';
 		descriptionMatcher = '';
@@ -47,9 +47,13 @@
 	}
 
 	function startEdit(rule: {
-		id: string; name: string; descriptionMatcher: string | null;
-		amountOperator: string; amountCents: number | null;
-		budgetCategoryId: string; vendorIds: string[]
+		id: string;
+		name: string;
+		descriptionMatcher: string | null;
+		amountOperator: string;
+		amountCents: number | null;
+		budgetCategoryId: string;
+		vendorIds: string[];
 	}) {
 		editRuleId = rule.id;
 		editName = rule.name;
@@ -71,8 +75,8 @@
 				amountOperator: editAmountOperator,
 				amountCents: editAmountCents === '' ? null : Math.round(Number(editAmountCents) * 100),
 				budgetCategoryId: editBudgetCategoryId,
-				vendorIds: editVendorIds
-			})
+				vendorIds: editVendorIds,
+			}),
 		});
 		editRuleId = '';
 		invalidateAll();
@@ -82,7 +86,7 @@
 		await fetch(`/api/rules/${ruleId}`, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ enabled: !enabled })
+			body: JSON.stringify({ enabled: !enabled }),
 		});
 		invalidateAll();
 	}
@@ -96,7 +100,7 @@
 		await fetch(`/api/rules/${ruleId}/move`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ direction })
+			body: JSON.stringify({ direction }),
 		});
 		invalidateAll();
 	}
@@ -108,8 +112,8 @@
 			body: JSON.stringify({
 				description: testDescription,
 				vendorId: testVendorId || null,
-				amountCents: testAmount === '' ? 0 : Math.round(Number(testAmount) * 100)
-			})
+				amountCents: testAmount === '' ? 0 : Math.round(Number(testAmount) * 100),
+			}),
 		});
 		const body = await res.json();
 		testResult = body.matches ? 'MATCHES' : 'no match';
@@ -132,12 +136,12 @@
 	<input bind:value={amountCents} placeholder="Amount ($)" type="number" step="0.01" />
 	<select bind:value={budgetCategoryId}>
 		<option value="" disabled>Target category</option>
-		{#each data.categories as cat}
+		{#each data.categories as cat (cat.id)}
 			<option value={cat.id}>{cat.name}</option>
 		{/each}
 	</select>
 	<select bind:value={selectedVendors} multiple>
-		{#each data.vendors as v}
+		{#each data.vendors as v (v.id)}
 			<option value={v.id}>{v.name}</option>
 		{/each}
 	</select>
@@ -159,12 +163,12 @@
 		</select>
 		<input bind:value={editAmountCents} placeholder="Amount ($)" type="number" step="0.01" />
 		<select bind:value={editBudgetCategoryId}>
-			{#each data.categories as cat}
+			{#each data.categories as cat (cat.id)}
 				<option value={cat.id}>{cat.name}</option>
 			{/each}
 		</select>
 		<select bind:value={editVendorIds} multiple>
-			{#each data.vendors as v}
+			{#each data.vendors as v (v.id)}
 				<option value={v.id}>{v.name}</option>
 			{/each}
 		</select>
@@ -174,7 +178,7 @@
 {/if}
 
 <ul>
-	{#each data.rules as rule}
+	{#each data.rules as rule (rule.id)}
 		<li>
 			<strong>{rule.name}</strong>
 			{rule.enabled ? 'on' : 'off'} &middot; priority {rule.priority}
@@ -182,7 +186,9 @@
 			<button onclick={() => move(rule.id, 'up')}>&uarr;</button>
 			<button onclick={() => move(rule.id, 'down')}>&darr;</button>
 			<button onclick={() => startEdit(rule)}>Edit</button>
-			<button onclick={() => toggle(rule.id, rule.enabled)}>{rule.enabled ? 'Disable' : 'Enable'}</button>
+			<button onclick={() => toggle(rule.id, rule.enabled)}
+				>{rule.enabled ? 'Disable' : 'Enable'}</button
+			>
 			<button onclick={() => remove(rule.id)}>Delete</button>
 
 			<details>
@@ -190,12 +196,17 @@
 				<input bind:value={testDescription} placeholder="Description" />
 				<select bind:value={testVendorId}>
 					<option value="">no vendor</option>
-					{#each data.vendors as v}
+					{#each data.vendors as v (v.id)}
 						<option value={v.id}>{v.name}</option>
 					{/each}
 				</select>
 				<input bind:value={testAmount} placeholder="Amount ($)" type="number" step="0.01" />
-				<button onclick={() => { testRuleId = rule.id; testRule(rule.id); }}>Run test</button>
+				<button
+					onclick={() => {
+						testRuleId = rule.id;
+						testRule(rule.id);
+					}}>Run test</button
+				>
 				{#if testRuleId === rule.id && testResult}<span>{testResult}</span>{/if}
 			</details>
 		</li>
