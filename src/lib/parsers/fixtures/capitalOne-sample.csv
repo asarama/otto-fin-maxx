@@ -1,0 +1,4 @@
+Transaction Date,Posted Date,Card No.,Description,Category,Debit,Credit
+2026-07-01,2026-07-02,X1234,AMZN MKTP US,Amazon,45.67,
+2026-07-03,2026-07-04,X1234,UBER *TRIP,Gas,12.34,
+2026-07-05,2026-07-06,X1234,PAYMENT THANK YOU,Payment,,200.00
