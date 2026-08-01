@@ -2,15 +2,12 @@ import type { PageServerLoad } from './$types';
 import { getDb } from '$lib/server/db';
 import { ensureBudgetCategoryMonth } from '$lib/server/repos/budgets';
 import { countUnreviewed } from '$lib/server/repos/transactions';
+import { currentMonth, isMonth } from '$lib/month';
 
-function currentMonth(): string {
-	const d = new Date();
-	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
 	const conn = await getDb();
-	const month = currentMonth();
+	const requested = url.searchParams.get('month');
+	const month = requested && isMonth(requested) ? requested : currentMonth();
 
 	const cats = await conn.runAndReadAll('SELECT id FROM budget_categories');
 	for (const row of cats.getRowObjects()) {
@@ -18,7 +15,7 @@ export const load: PageServerLoad = async () => {
 	}
 
 	const reader = await conn.runAndReadAll(
-		`SELECT bcm.id, bcm.amount_cents,
+		`SELECT bcm.id, bcm.budget_category_id, bcm.amount_cents,
             bc.name AS category_name, b.name AS budget_name, o.name AS owner_name,
             COALESCE(SUM(-tx.amount_cents), 0) AS spent_cents
      FROM budget_category_months bcm
@@ -27,13 +24,14 @@ export const load: PageServerLoad = async () => {
      JOIN owners o ON o.id = b.owner_id
      LEFT JOIN account_transactions tx ON tx.budget_category_month_id = bcm.id
      WHERE bcm.month = ?
-     GROUP BY bcm.id, bcm.amount_cents, bc.name, b.name, o.name
+     GROUP BY bcm.id, bcm.budget_category_id, bcm.amount_cents, bc.name, b.name, o.name
      ORDER BY spent_cents - bcm.amount_cents DESC`,
 		[month]
 	);
 
 	const categories = reader.getRowObjects().map((r) => ({
 		id: String(r.id),
+		budgetCategoryId: String(r.budget_category_id),
 		categoryName: String(r.category_name),
 		budgetName: String(r.budget_name),
 		ownerName: String(r.owner_name),
