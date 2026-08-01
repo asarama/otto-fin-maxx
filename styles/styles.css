@@ -1,0 +1,145 @@
+/* ==========================================================================
+   Finance app color system
+
+   Two tiers:
+     1. PRIMITIVES — raw hues from the mockup. Named by colour and lightness.
+        No meaning attached. Never referenced directly by a component.
+     2. ROLES      — what a colour is *for*. Components reference only these.
+
+   To reskin the app, change tier 1. To change what a colour means, change
+   tier 2. Nothing else moves.
+   ========================================================================== */
+
+:root {
+	/* ======================================================================
+     1. PRIMITIVES
+     ====================================================================== */
+
+	/* --- Cream: page and card surfaces, lightest to deepest --- */
+	--cream-50: #fff6ea;
+	--cream-100: #fff0dc;
+	--cream-200: #ffe9ce;
+	--cream-300: #ffe0be;
+
+	/* --- Brown: text and lines --- */
+	--brown-500: #9a7a5a;
+	--brown-700: #7a5a3a;
+	--brown-900: #3a2a15;
+
+	/* --- Pink: the accent hue --- */
+	--pink-200: #ffb5c2;
+	--pink-500: #ff3b6e;
+	--pink-700: #c41e4e; /* derived: accent dark enough for small text (4.9:1 on cream-200) */
+	--pink-800: #a3153c; /* derived: pressed state */
+	--pink-900: #4b1528;
+
+	/* --- Orange --- */
+	--orange-200: #ffbe86;
+	--orange-900: #4a1b0c;
+
+	/* --- Yellow --- */
+	--yellow-200: #ffe156;
+	--yellow-900: #412402;
+
+	/* --- Green --- */
+	--green-100: #d9e8c4;
+	--green-200: #c0dd97;
+	--green-500: #639922;
+	--green-700: #3b6d11;
+	--green-900: #173404;
+
+	/* --- Rust: the negative hue --- */
+	--rust-700: #712b13;
+
+	/* --- Absolute --- */
+	--white: #ffffff;
+
+	/* --- Alpha tints, derived from the above --- */
+	--alpha-ink-10: rgba(58, 42, 21, 0.1);
+	--alpha-ink-24: rgba(58, 42, 21, 0.24);
+	--alpha-ink-35: rgba(58, 42, 21, 0.35);
+	--alpha-accent-10: rgba(255, 59, 110, 0.1);
+	--alpha-accent-30: rgba(255, 59, 110, 0.3);
+
+	/* ======================================================================
+     2. ROLES
+     ====================================================================== */
+
+	/* --- Surfaces ------------------------------------------------------- */
+	--surface-page: var(--cream-200); /* the app background */
+	--surface-primary: var(--cream-50); /* cards — the dominant content surface */
+	--surface-secondary: var(--cream-200); /* wells inset inside a card */
+	--surface-hover: var(--cream-100); /* row and control hover */
+	--surface-track: var(--cream-300); /* meter and progress tracks */
+	--surface-accent: var(--pink-500); /* filled CTA, meter fill, logo */
+	--surface-feature: var(--green-500); /* the goal card — one saturated block */
+	--surface-overlay: var(--alpha-ink-35); /* modal backdrop */
+
+	/* --- Text ----------------------------------------------------------- */
+	--text-primary: var(--brown-900); /* headings and body */
+	--text-secondary: var(--brown-700); /* labels, captions, table headers */
+	--text-tertiary: var(--brown-500); /* decoration only — 3.4:1, fails AA for text */
+	--text-accent: var(--pink-700); /* links and small accent labels */
+	--text-positive: var(--green-700); /* money in, on track */
+	--text-negative: var(--rust-700); /* money out, over budget */
+
+	/* --- Text on filled surfaces ---------------------------------------- */
+	--on-accent: var(--white); /* only at >=18.66px bold — 3.4:1 */
+	--on-feature: var(--cream-200); /* see the contrast note below */
+	--on-feature-muted: var(--green-100);
+
+	/* --- Accent (interaction) ------------------------------------------- */
+	--accent: var(--pink-500); /* fills and graphics on a card */
+	--accent-strong: var(--pink-700); /* small buttons, links, focus rings */
+	--accent-pressed: var(--pink-800);
+	--accent-subtle: var(--alpha-accent-10); /* selected row, active nav bed */
+	--accent-ring: var(--alpha-accent-30); /* focus halo */
+
+	/* --- Feedback ------------------------------------------------------- */
+	--positive: var(--green-700);
+	--positive-surface: var(--green-200);
+	--on-positive: var(--green-900);
+
+	--negative: var(--rust-700);
+	--negative-surface: var(--pink-200);
+	--on-negative: var(--pink-900);
+
+	--notice: var(--orange-900); /* attention without alarm */
+	--notice-surface: var(--orange-200);
+	--on-notice: var(--orange-900);
+
+	/* --- Borders -------------------------------------------------------- */
+	--border-subtle: var(--alpha-ink-10); /* dividers, when unavoidable */
+	--border-default: var(--alpha-ink-24); /* form control edges */
+
+	/* --- Categorical scale ----------------------------------------------
+     Identity, not status. Budget categories are user-created, so a
+     category is hashed to an index in 1..3. Index 4 (green) is excluded
+     from that rotation and reserved for income, so green always means
+     money in.
+     -------------------------------------------------------------------- */
+	--category-count: 3;
+
+	--category-1-surface: var(--pink-200);
+	--category-1-text: var(--pink-900);
+	--category-2-surface: var(--orange-200);
+	--category-2-text: var(--orange-900);
+	--category-3-surface: var(--yellow-200);
+	--category-3-text: var(--yellow-900);
+	--category-4-surface: var(--green-200);
+	--category-4-text: var(--green-900);
+}
+
+/* ==========================================================================
+   Contrast notes (WCAG 2.1 AA)
+
+   --on-accent on --surface-accent .............. 3.4:1  large text only
+   --accent on --surface-page ................... 2.9:1  graphics on cards only
+   --text-tertiary on --surface-page ............ 3.4:1  decoration only
+   --on-feature on --surface-feature ............ 2.9:1  FAILS
+
+   The feature card is the one place the palette and the accessibility floor
+   disagree: no light foreground clears 4.5:1 on --green-500. To fix, deepen
+   the primitive — --green-500: #497415 — which lifts --on-feature to 4.7:1
+   and leaves everything else untouched.
+   ========================================================================== */

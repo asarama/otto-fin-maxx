@@ -1,0 +1,31 @@
+.control {
+	background: var(--surface-primary);
+	border: 1px solid var(--border-default);
+	border-radius: var(--radius-lg);
+	padding: var(--space-2) var(--space-3);
+	color: var(--text-primary);
+	transition:
+		border-color var(--motion-fast),
+		box-shadow var(--motion-fast);
+}
+
+.control:hover:not(:disabled) {
+	border-color: var(--text-secondary);
+}
+
+.control:focus {
+	outline: none;
+	border-color: var(--accent-strong);
+	box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.control:disabled,
+.control[readonly] {
+	background: var(--surface-secondary);
+	color: var(--text-secondary);
+}
+
+.control.numeric {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
