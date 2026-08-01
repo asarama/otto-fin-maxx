@@ -4,7 +4,7 @@ import { normalizeDate } from '../date';
 import type { ParseResult, ParsedRow } from './types';
 
 export function parseBmo(csvText: string): ParseResult {
-  const records = parse(csvText, { columns: true, skip_empty_lines: true });
+  const records = parse<Record<string, string>>(csvText, { columns: true, skip_empty_lines: true });
   const rows: ParsedRow[] = [];
   const errors: string[] = [];
   records.forEach((rec, i) => {

@@ -40,7 +40,7 @@ export function ruleMatches(rule: RuleSpec, tx: TransactionCandidate): boolean {
   return true;
 }
 
-export function firstMatchingRule(rules: RuleSpec[], tx: TransactionCandidate): RuleSpec | null {
+export function firstMatchingRule<T extends RuleSpec>(rules: T[], tx: TransactionCandidate): T | null {
   for (const rule of rules) {
     if (ruleMatches(rule, tx)) return rule;
   }

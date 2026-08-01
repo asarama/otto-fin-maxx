@@ -1,2 +1,37 @@
-<h1>Welcome to SvelteKit</h1>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+<script lang="ts">
+	import { centsToDollars } from '$lib/money';
+	let { data } = $props();
+</script>
+
+<h1>Dashboard — {data.month}</h1>
+
+{#if data.unreviewed > 0}
+	<p><a href="/review">{data.unreviewed} transaction(s) need review</a></p>
+{/if}
+
+<p>Total limit: {centsToDollars(data.totalLimit)} &middot; Total spent: {centsToDollars(data.totalSpent)}</p>
+
+<table>
+	<thead>
+		<tr>
+			<th>Owner</th>
+			<th>Budget</th>
+			<th>Category</th>
+			<th>Spent</th>
+			<th>Limit</th>
+			<th>Remaining</th>
+		</tr>
+	</thead>
+	<tbody>
+		{#each data.categories as cat}
+			<tr>
+				<td>{cat.ownerName}</td>
+				<td>{cat.budgetName}</td>
+				<td>{cat.categoryName}</td>
+				<td>{centsToDollars(cat.spentCents)}</td>
+				<td>{centsToDollars(cat.amountCents)}</td>
+				<td>{centsToDollars(cat.amountCents - cat.spentCents)}</td>
+			</tr>
+		{/each}
+	</tbody>
+</table>

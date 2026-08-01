@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { DuckDBConnection } from '@duckdb/node-api';
+import type { DuckDBConnection, DuckDBValue } from '@duckdb/node-api';
 import type { AmountOperator } from '$lib/matchers/rules';
 
 export interface Rule {
@@ -71,7 +71,7 @@ export async function createRule(conn: DuckDBConnection, input: CreateRuleInput)
 
 export async function updateRule(conn: DuckDBConnection, id: string, patch: Partial<Rule>): Promise<void> {
   const sets: string[] = [];
-  const params: unknown[] = [];
+  const params: DuckDBValue[] = [];
   if (patch.name !== undefined) { sets.push('name = ?'); params.push(patch.name); }
   if (patch.descriptionMatcher !== undefined) { sets.push('description_matcher = ?'); params.push(patch.descriptionMatcher); }
   if (patch.amountOperator !== undefined) { sets.push('amount_operator = ?'); params.push(patch.amountOperator); }

@@ -5,7 +5,7 @@ import { createVendor } from './vendors';
 import { listOwners, createBudget, createBudgetCategory, ensureBudgetCategoryMonth } from './budgets';
 import { listTransactions, countUnreviewed, getUnreviewed, assignTransaction } from './transactions';
 
-async function seedTx(conn: Awaited<ReturnType<typeof createTestDb>>, overrides: Record<string, unknown> = {}) {
+async function seedTx(conn: Awaited<ReturnType<typeof createTestDb>>, overrides: Record<string, string | number> = {}) {
   const account = overrides.accountId
     ? { id: String(overrides.accountId) }
     : await createAccount(conn, { name: 'CapOne', bank: 'capital_one', type: 'credit' });

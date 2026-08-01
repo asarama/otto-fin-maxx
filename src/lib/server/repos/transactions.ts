@@ -1,4 +1,4 @@
-import type { DuckDBConnection } from '@duckdb/node-api';
+import type { DuckDBConnection, DuckDBValue } from '@duckdb/node-api';
 
 export interface Transaction {
   id: string;
@@ -37,7 +37,7 @@ function rowToTransaction(row: Record<string, unknown>): Transaction {
 
 export async function listTransactions(conn: DuckDBConnection, filters: TransactionFilters): Promise<Transaction[]> {
   const where: string[] = [];
-  const params: unknown[] = [];
+  const params: DuckDBValue[] = [];
   if (filters.accountId) {
     where.push('account_id = ?');
     params.push(filters.accountId);
