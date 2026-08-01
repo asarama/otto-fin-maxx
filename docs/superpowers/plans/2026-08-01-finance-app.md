@@ -102,7 +102,7 @@ data/
 - [ ] **Step 6: Verify scaffold**
 
 Run: `npm run check && npm run build && npx vitest run`
-Expected: check passes, build succeeds, at least one (template) test runs and passes.
+Expected: check passes, build succeeds, and `vitest` exits with a passing run (whether or not the template included a sample test).
 
 - [ ] **Step 7: Commit**
 
@@ -123,7 +123,9 @@ git commit -m "chore: scaffold SvelteKit project"
   - `parseAmountToCents(input: string): number`
   - `centsToDollars(cents: number): string`
   - `normalizeDate(raw: string): string`
-  - `externalId(accountId: string, postedDate: string, description: string, amountCents: number): string`
+  - `externalId(accountId: string, postedDate: string, description: string, rawVendorName: string, amountCents: number): string`
+
+Dedupe note: `externalId` is a stable hash of everything meaningful in a bank row (account, posted date, description, raw vendor name, amount). Two transactions that are identical in all five fields on the same account are indistinguishable from the bank's data — this is inherent to the CSV format, not a bug in the hash. The import pipeline counts such collisions as `duplicates` (never silently drops anything without reporting it), and the review queue is the place to spot-check any row you suspect was deduped. If Capital One/BMO exports ever include a stable transaction reference number, add it to this hash first — that is the correct long-term fix.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -180,20 +182,25 @@ import { describe, it, expect } from 'vitest';
 import { externalId } from './externalId';
 
 describe('externalId', () => {
-  const base = { accountId: 'a', postedDate: '2026-07-01', description: 'COFFEE', amountCents: -500 };
+  const base = { accountId: 'a', postedDate: '2026-07-01', description: 'COFFEE', rawVendorName: 'COFFEE', amountCents: -500 };
   it('is deterministic', () => {
-    expect(externalId(base.accountId, base.postedDate, base.description, base.amountCents)).toBe(
-      externalId(base.accountId, base.postedDate, base.description, base.amountCents)
+    expect(externalId(base.accountId, base.postedDate, base.description, base.rawVendorName, base.amountCents)).toBe(
+      externalId(base.accountId, base.postedDate, base.description, base.rawVendorName, base.amountCents)
     );
   });
   it('differs when amount changes', () => {
-    expect(externalId(base.accountId, base.postedDate, base.description, -600)).not.toBe(
-      externalId(base.accountId, base.postedDate, base.description, -500)
+    expect(externalId(base.accountId, base.postedDate, base.description, base.rawVendorName, -600)).not.toBe(
+      externalId(base.accountId, base.postedDate, base.description, base.rawVendorName, -500)
+    );
+  });
+  it('differs when the raw vendor name changes', () => {
+    expect(externalId(base.accountId, base.postedDate, base.description, 'AMZN MKTP US', base.amountCents)).not.toBe(
+      externalId(base.accountId, base.postedDate, base.description, base.rawVendorName, base.amountCents)
     );
   });
   it('differs across accounts', () => {
-    expect(externalId('b', base.postedDate, base.description, base.amountCents)).not.toBe(
-      externalId(base.accountId, base.postedDate, base.description, base.amountCents)
+    expect(externalId('b', base.postedDate, base.description, base.rawVendorName, base.amountCents)).not.toBe(
+      externalId(base.accountId, base.postedDate, base.description, base.rawVendorName, base.amountCents)
     );
   });
 });
@@ -246,8 +253,8 @@ export function normalizeDate(raw: string): string {
 ```ts
 import { createHash } from 'node:crypto';
 
-export function externalId(accountId: string, postedDate: string, description: string, amountCents: number): string {
-  const raw = [accountId, postedDate, description, amountCents].join('|');
+export function externalId(accountId: string, postedDate: string, description: string, rawVendorName: string, amountCents: number): string {
+  const raw = [accountId, postedDate, description, rawVendorName, amountCents].join('|');
   return createHash('sha1').update(raw).digest('hex');
 }
 ```
@@ -529,10 +536,13 @@ git commit -m "feat: add duckdb schema, connection, and seed"
 **Interfaces:**
 - Produces:
   - `interface ParsedRow { postedDate: string; description: string; rawVendorName: string; amountCents: number }`
-  - `parseCapitalOne(csvText: string): ParsedRow[]`
-  - `parseBmo(csvText: string): ParsedRow[]`
+  - `interface ParseResult { rows: ParsedRow[]; errors: string[] }`
+  - `parseCapitalOne(csvText: string): ParseResult`
+  - `parseBmo(csvText: string): ParseResult`
   - `type BankId = 'capital_one' | 'bmo'`
-  - `parseBankCsv(bank: BankId, csvText: string): ParsedRow[]`
+  - `parseBankCsv(bank: BankId, csvText: string): ParseResult`
+
+Parsing is row-tolerant: an invalid row is skipped, its problem recorded in `errors` (with the 1-based spreadsheet row number, header = row 1), and the remaining valid rows still come back in `rows`. `parseBankCsv` throws only for an unknown bank, never for bad CSV content.
 
 Note: Capital One and BMO column headers vary by export type. Each parser reads headers by name; if a real export differs, adjust the property names used in the parser and update the fixture. The mapping lives in one obvious place at the top of each parser.
 
@@ -570,7 +580,8 @@ const fixture = readFileSync(fileURLToPath(new URL('./fixtures/capitalOne-sample
 
 describe('parseCapitalOne', () => {
   it('parses debits as negative cents and credits as positive cents', () => {
-    const rows = parseCapitalOne(fixture);
+    const { rows, errors } = parseCapitalOne(fixture);
+    expect(errors).toEqual([]);
     expect(rows).toHaveLength(3);
     expect(rows[0]).toEqual({
       postedDate: '2026-07-02',
@@ -580,6 +591,20 @@ describe('parseCapitalOne', () => {
     });
     expect(rows[1].amountCents).toBe(-1234);
     expect(rows[2].amountCents).toBe(20000);
+  });
+
+  it('reports bad rows and keeps the valid ones', () => {
+    const csv = [
+      'Transaction Date,Posted Date,Card No.,Description,Category,Debit,Credit',
+      '2026-07-01,2026-07-02,X1,GOOD ONE,Food,5.00,',
+      '2026-07-03,2026-07-04,X1,BAD AMOUNT,Food,not-a-number,',
+      '2026-07-05,2026-07-06,X1,GOOD TWO,Food,,7.00'
+    ].join('\n');
+    const { rows, errors } = parseCapitalOne(csv);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.description)).toEqual(['GOOD ONE', 'GOOD TWO']);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/Row 3/);
   });
 });
 ```
@@ -596,7 +621,8 @@ const fixture = readFileSync(fileURLToPath(new URL('./fixtures/bmo-sample.csv', 
 
 describe('parseBmo', () => {
   it('parses MM/DD/YYYY dates and debit/credit signs', () => {
-    const rows = parseBmo(fixture);
+    const { rows, errors } = parseBmo(fixture);
+    expect(errors).toEqual([]);
     expect(rows).toHaveLength(3);
     expect(rows[0]).toEqual({
       postedDate: '2026-07-01',
@@ -626,6 +652,11 @@ export interface ParsedRow {
   rawVendorName: string;
   amountCents: number;
 }
+
+export interface ParseResult {
+  rows: ParsedRow[];
+  errors: string[];
+}
 ```
 
 `src/lib/parsers/capitalOne.ts`:
@@ -634,26 +665,31 @@ export interface ParsedRow {
 import { parse } from 'csv-parse/sync';
 import { parseAmountToCents } from '../money';
 import { normalizeDate } from '../date';
-import type { ParsedRow } from './types';
+import type { ParseResult, ParsedRow } from './types';
 
-export function parseCapitalOne(csvText: string): ParsedRow[] {
+export function parseCapitalOne(csvText: string): ParseResult {
   const records = parse(csvText, { columns: true, skip_empty_lines: true });
   const rows: ParsedRow[] = [];
-  for (const rec of records) {
-    const description = String(rec.Description ?? '').trim();
-    const debit = String(rec.Debit ?? '').trim();
-    const credit = String(rec.Credit ?? '').trim();
-    const amountCents = debit
-      ? -parseAmountToCents(debit)
-      : parseAmountToCents(credit);
-    rows.push({
-      postedDate: normalizeDate(String(rec['Posted Date'] ?? rec['Transaction Date'])),
-      description,
-      rawVendorName: description,
-      amountCents
-    });
-  }
-  return rows;
+  const errors: string[] = [];
+  records.forEach((rec, i) => {
+    try {
+      const description = String(rec.Description ?? '').trim();
+      const debit = String(rec.Debit ?? '').trim();
+      const credit = String(rec.Credit ?? '').trim();
+      const amountCents = debit
+        ? -parseAmountToCents(debit)
+        : parseAmountToCents(credit);
+      rows.push({
+        postedDate: normalizeDate(String(rec['Posted Date'] ?? rec['Transaction Date'])),
+        description,
+        rawVendorName: description,
+        amountCents
+      });
+    } catch (err) {
+      errors.push(`Row ${i + 2}: ${(err as Error).message}`);
+    }
+  });
+  return { rows, errors };
 }
 ```
 
@@ -663,27 +699,32 @@ export function parseCapitalOne(csvText: string): ParsedRow[] {
 import { parse } from 'csv-parse/sync';
 import { parseAmountToCents } from '../money';
 import { normalizeDate } from '../date';
-import type { ParsedRow } from './types';
+import type { ParseResult, ParsedRow } from './types';
 
-export function parseBmo(csvText: string): ParsedRow[] {
+export function parseBmo(csvText: string): ParseResult {
   const records = parse(csvText, { columns: true, skip_empty_lines: true });
   const rows: ParsedRow[] = [];
-  for (const rec of records) {
-    const description = String(rec.Description ?? '').trim();
-    const type = String(rec.Type ?? '').trim().toLowerCase();
-    const amount = parseAmountToCents(String(rec.Amount ?? ''));
-    let amountCents: number;
-    if (type === 'credit' || type === 'deposit') amountCents = Math.abs(amount);
-    else if (type === 'debit' || type === 'withdrawal') amountCents = -Math.abs(amount);
-    else amountCents = amount;
-    rows.push({
-      postedDate: normalizeDate(String(rec.Date ?? '')),
-      description,
-      rawVendorName: description,
-      amountCents
-    });
-  }
-  return rows;
+  const errors: string[] = [];
+  records.forEach((rec, i) => {
+    try {
+      const description = String(rec.Description ?? '').trim();
+      const type = String(rec.Type ?? '').trim().toLowerCase();
+      const amount = parseAmountToCents(String(rec.Amount ?? ''));
+      let amountCents: number;
+      if (type === 'credit' || type === 'deposit') amountCents = Math.abs(amount);
+      else if (type === 'debit' || type === 'withdrawal') amountCents = -Math.abs(amount);
+      else amountCents = amount;
+      rows.push({
+        postedDate: normalizeDate(String(rec.Date ?? '')),
+        description,
+        rawVendorName: description,
+        amountCents
+      });
+    } catch (err) {
+      errors.push(`Row ${i + 2}: ${(err as Error).message}`);
+    }
+  });
+  return { rows, errors };
 }
 ```
 
@@ -692,14 +733,15 @@ export function parseBmo(csvText: string): ParsedRow[] {
 ```ts
 import { parseCapitalOne } from './capitalOne';
 import { parseBmo } from './bmo';
-import type { ParsedRow } from './types';
+import type { ParseResult } from './types';
 
 export type BankId = 'capital_one' | 'bmo';
-export type { ParsedRow } from './types';
+export type { ParsedRow, ParseResult } from './types';
 
-export function parseBankCsv(bank: BankId, csvText: string): ParsedRow[] {
+export function parseBankCsv(bank: BankId, csvText: string): ParseResult {
   if (bank === 'capital_one') return parseCapitalOne(csvText);
-  return parseBmo(csvText);
+  if (bank === 'bmo') return parseBmo(csvText);
+  throw new Error(`Unknown bank: ${bank}`);
 }
 ```
 
@@ -729,6 +771,7 @@ git commit -m "feat: add capital one and bmo csv parsers"
   - `interface TransactionCandidate { description: string; vendorId: string | null; amountCents: number }`
   - `ruleMatches(rule: RuleSpec, tx: TransactionCandidate): boolean`
   - `firstMatchingRule(rules: RuleSpec[], tx: TransactionCandidate): RuleSpec | null`
+  - `isValidRegex(pattern: string): boolean`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -736,7 +779,7 @@ git commit -m "feat: add capital one and bmo csv parsers"
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { ruleMatches, firstMatchingRule, type RuleSpec } from './rules';
+import { ruleMatches, firstMatchingRule, isValidRegex, type RuleSpec } from './rules';
 
 const tx = { description: 'AMZN MKTP US', vendorId: 'v1', amountCents: -4567 };
 
@@ -783,6 +826,15 @@ describe('firstMatchingRule', () => {
   it('returns null when nothing matches', () => {
     const a: RuleSpec = { id: 'a', descriptionMatcher: '^NETFLIX', amountOperator: 'any', amountCents: null, vendorIds: [] };
     expect(firstMatchingRule([a], tx)).toBeNull();
+  });
+});
+
+describe('isValidRegex', () => {
+  it('accepts a valid pattern', () => {
+    expect(isValidRegex('^AMZN')).toBe(true);
+  });
+  it('rejects a malformed pattern', () => {
+    expect(isValidRegex('(')).toBe(false);
   });
 });
 ```
@@ -844,6 +896,15 @@ export function firstMatchingRule(rules: RuleSpec[], tx: TransactionCandidate): 
     if (ruleMatches(rule, tx)) return rule;
   }
   return null;
+}
+
+export function isValidRegex(pattern: string): boolean {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
 }
 ```
 
@@ -992,6 +1053,12 @@ describe('accounts repo', () => {
     const conn = await createTestDb();
     expect(await getAccount(conn, 'nope')).toBeNull();
   });
+
+  it('rejects an invalid bank or type', async () => {
+    const conn = await createTestDb();
+    await expect(createAccount(conn, { name: 'Bad', bank: 'chase', type: 'credit' })).rejects.toThrow();
+    await expect(createAccount(conn, { name: 'Bad', bank: 'capital_one', type: 'prepaid' })).rejects.toThrow();
+  });
 });
 ```
 
@@ -1000,6 +1067,7 @@ describe('accounts repo', () => {
 ```ts
 import { describe, it, expect } from 'vitest';
 import { createTestDb } from '../test-helpers';
+import { createAccount } from './accounts';
 import { listVendors, createVendor, addVendorAlias, mergeVendors } from './vendors';
 
 describe('vendors repo', () => {
@@ -1023,13 +1091,14 @@ describe('vendors repo', () => {
 
   it('merges two vendors, reassigning transactions', async () => {
     const conn = await createTestDb();
+    const account = await createAccount(conn, { name: 'CapOne', bank: 'capital_one', type: 'credit' });
     const keep = await createVendor(conn, 'Amazon', ['AMZN MKTP US']);
     const remove = await createVendor(conn, 'Amazon Prime', ['PRIME VIDEO']);
     await conn.run(
       `INSERT INTO account_transactions
        (id, account_id, external_id, posted_date, description, raw_vendor_name, amount_cents, vendor_id, assignment_status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ['t1', 'a1', 'e1', '2026-07-01', 'PRIME VIDEO', 'PRIME VIDEO', -500, remove.id, 'unreviewed', '2026-07-01']
+      ['t1', account.id, 'e1', '2026-07-01', 'PRIME VIDEO', 'PRIME VIDEO', -500, remove.id, 'unreviewed', '2026-07-01']
     );
     await mergeVendors(conn, keep.id, remove.id);
 
@@ -1040,6 +1109,26 @@ describe('vendors repo', () => {
 
     const tx = await conn.runAndReadAll('SELECT vendor_id FROM account_transactions WHERE id = ?', ['t1']);
     expect(tx.getRowObjects()[0].vendor_id).toBe(keep.id);
+  });
+
+  it('merges vendors that share a rule without primary-key conflicts', async () => {
+    const conn = await createTestDb();
+    const keep = await createVendor(conn, 'Amazon');
+    const remove = await createVendor(conn, 'Amazon Prime');
+    const catRow = await conn.runAndReadAll('SELECT id FROM budget_categories LIMIT 1');
+    const catId = String(catRow.getRowObjects()[0].id);
+    const ruleId = 'rule-amazon';
+    await conn.run(
+      `INSERT INTO rules (id, name, description_matcher, amount_operator, amount_cents, budget_category_id, priority, enabled)
+       VALUES (?, 'Amazon', NULL, 'any', NULL, ?, 1, true)`,
+      [ruleId, catId]
+    );
+    await conn.run('INSERT INTO rule_vendors (rule_id, vendor_id) VALUES (?, ?), (?, ?)', [ruleId, keep.id, ruleId, remove.id]);
+
+    await mergeVendors(conn, keep.id, remove.id);
+
+    const rv = await conn.runAndReadAll('SELECT vendor_id FROM rule_vendors WHERE rule_id = ?', [ruleId]);
+    expect(rv.getRowObjects().map((r) => String(r.vendor_id))).toEqual([keep.id]);
   });
 });
 ```
@@ -1065,6 +1154,9 @@ export interface Account {
   currency: string;
   created_at: string;
 }
+
+const BANKS = ['capital_one', 'bmo'];
+const TYPES = ['credit', 'debit'];
 
 function rowToAccount(row: Record<string, unknown>): Account {
   return {
@@ -1092,6 +1184,8 @@ export async function createAccount(
   conn: DuckDBConnection,
   input: { name: string; bank: string; type: string }
 ): Promise<Account> {
+  if (!BANKS.includes(input.bank)) throw new Error(`Invalid bank: ${input.bank}`);
+  if (!TYPES.includes(input.type)) throw new Error(`Invalid type: ${input.type}`);
   const id = randomUUID();
   await conn.run(
     'INSERT INTO accounts (id, name, bank, type, currency, created_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -1161,6 +1255,12 @@ export async function addVendorAlias(conn: DuckDBConnection, vendorId: string, n
 }
 
 export async function mergeVendors(conn: DuckDBConnection, keepId: string, removeId: string): Promise<void> {
+  await conn.run(
+    `DELETE FROM rule_vendors WHERE vendor_id = ? AND rule_id IN (
+       SELECT rule_id FROM rule_vendors WHERE vendor_id = ?
+     )`,
+    [removeId, keepId]
+  );
   await conn.run('UPDATE vendor_aliases SET vendor_id = ? WHERE vendor_id = ?', [keepId, removeId]);
   await conn.run('UPDATE account_transactions SET vendor_id = ? WHERE vendor_id = ?', [keepId, removeId]);
   await conn.run('UPDATE rule_vendors SET vendor_id = ? WHERE vendor_id = ?', [keepId, removeId]);
@@ -1205,7 +1305,7 @@ git commit -m "feat: add accounts and vendors repositories"
   - `createBudget(conn, input: { ownerId: string; name: string }): Promise<Budget>`
   - `listBudgetCategories(conn): Promise<BudgetCategory[]>`
   - `createBudgetCategory(conn, input: { budgetId: string; name: string; monthlyLimitCents: number }): Promise<BudgetCategory>`
-  - `updateBudgetCategoryLimit(conn, id: string, monthlyLimitCents: number): Promise<void>`
+  - `updateBudgetCategoryLimit(conn, id: string, monthlyLimitCents: number): Promise<void>` — updates the category and re-snapshots the **current** month's `budget_category_months` row to the new value. Already-created past months keep their snapshot; future months snapshot the new value when first created.
   - `ensureBudgetCategoryMonth(conn, budgetCategoryId: string, month: string): Promise<BudgetCategoryMonth>`
   - `listBudgetCategoryMonths(conn, month: string): Promise<BudgetCategoryMonth[]>`
 
@@ -1260,6 +1360,22 @@ describe('budgets repo', () => {
     const all = await listBudgetCategoryMonths(conn, '2026-07');
     expect(all).toHaveLength(1);
     expect(all[0].amount_cents).toBe(10000);
+  });
+
+  it('updating a limit preserves past snapshots and applies to future months', async () => {
+    const conn = await createTestDb();
+    const me = (await listOwners(conn)).find((o) => o.name === 'Me')!;
+    const budget = await createBudget(conn, { ownerId: me.id, name: 'Personal' });
+    const cat = await createBudgetCategory(conn, { budgetId: budget.id, name: 'Gaming', monthlyLimitCents: 10000 });
+
+    await ensureBudgetCategoryMonth(conn, cat.id, '2026-07');
+    await updateBudgetCategoryLimit(conn, cat.id, 15000);
+
+    const july = await listBudgetCategoryMonths(conn, '2026-07');
+    expect(july[0].amount_cents).toBe(10000);
+
+    const august = await ensureBudgetCategoryMonth(conn, cat.id, '2026-08');
+    expect(august.amount_cents).toBe(15000);
   });
 });
 ```
@@ -1346,7 +1462,14 @@ export async function createBudgetCategory(
 }
 
 export async function updateBudgetCategoryLimit(conn: DuckDBConnection, id: string, monthlyLimitCents: number): Promise<void> {
+  const current = await ensureBudgetCategoryMonth(conn, id, currentMonth());
   await conn.run('UPDATE budget_categories SET monthly_limit_cents = ? WHERE id = ?', [monthlyLimitCents, id]);
+  await conn.run('UPDATE budget_category_months SET amount_cents = ? WHERE id = ?', [monthlyLimitCents, current.id]);
+}
+
+function currentMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export async function ensureBudgetCategoryMonth(
@@ -1423,6 +1546,7 @@ git commit -m "feat: add budgets repositories"
   - `createRule(conn, input: { name: string; descriptionMatcher?: string | null; amountOperator?: AmountOperator; amountCents?: number | null; budgetCategoryId: string; priority?: number; vendorIds?: string[] }): Promise<Rule>`
   - `updateRule(conn, id: string, patch: Partial<Rule>): Promise<void>`
   - `deleteRule(conn, id: string): Promise<void>`
+  - `moveRule(conn, id: string, direction: 'up' | 'down'): Promise<void>` — swaps `priority` with the adjacent rule in priority order
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1502,7 +1626,7 @@ import { describe, it, expect } from 'vitest';
 import { createTestDb } from '../test-helpers';
 import { listOwners, createBudget, createBudgetCategory } from './budgets';
 import { createVendor } from './vendors';
-import { listRules, createRule, updateRule, deleteRule } from './rules';
+import { listRules, createRule, updateRule, deleteRule, moveRule } from './rules';
 
 async function makeCategory(conn: Awaited<ReturnType<typeof createTestDb>>) {
   const me = (await listOwners(conn)).find((o) => o.name === 'Me')!;
@@ -1532,6 +1656,21 @@ describe('rules repo', () => {
 
     await deleteRule(conn, rule.id);
     expect(await listRules(conn)).toHaveLength(0);
+  });
+
+  it('moves a rule up or down by swapping priorities', async () => {
+    const conn = await createTestDb();
+    const cat = await makeCategory(conn);
+    const a = await createRule(conn, { name: 'A', budgetCategoryId: cat.id, priority: 1 });
+    const b = await createRule(conn, { name: 'B', budgetCategoryId: cat.id, priority: 2 });
+
+    await moveRule(conn, a.id, 'down');
+    let rules = await listRules(conn);
+    expect(rules.map((r) => r.id)).toEqual([b.id, a.id]);
+
+    await moveRule(conn, a.id, 'up');
+    rules = await listRules(conn);
+    expect(rules.map((r) => r.id)).toEqual([a.id, b.id]);
   });
 });
 ```
@@ -1729,6 +1868,25 @@ export async function deleteRule(conn: DuckDBConnection, id: string): Promise<vo
   await conn.run('DELETE FROM rules WHERE id = ?', [id]);
 }
 
+export async function moveRule(conn: DuckDBConnection, id: string, direction: 'up' | 'down'): Promise<void> {
+  const current = await conn.runAndReadAll('SELECT id, priority FROM rules WHERE id = ?', [id]);
+  const rows = current.getRowObjects();
+  if (rows.length === 0) throw new Error(`Rule not found: ${id}`);
+  const fromId = String(rows[0].id);
+  const from = Number(rows[0].priority);
+
+  const neighbor = direction === 'up'
+    ? await conn.runAndReadAll('SELECT id, priority FROM rules WHERE priority < ? ORDER BY priority DESC LIMIT 1', [from])
+    : await conn.runAndReadAll('SELECT id, priority FROM rules WHERE priority > ? ORDER BY priority ASC LIMIT 1', [from]);
+  const nrows = neighbor.getRowObjects();
+  if (nrows.length === 0) return;
+  const toId = String(nrows[0].id);
+  const to = Number(nrows[0].priority);
+
+  await conn.run('UPDATE rules SET priority = ? WHERE id = ?', [to, fromId]);
+  await conn.run('UPDATE rules SET priority = ? WHERE id = ?', [from, toId]);
+}
+
 async function nextPriority(conn: DuckDBConnection): Promise<number> {
   const reader = await conn.runAndReadAll('SELECT coalesce(max(priority), -1) + 1 AS next FROM rules');
   return Number(reader.getRowObjects()[0].next);
@@ -1905,7 +2063,7 @@ export async function importTransactions(conn: DuckDBConnection, accountId: stri
   const vendors = await listVendors(conn);
 
   for (const row of rows) {
-    const id = externalId(accountId, row.postedDate, row.description, row.amountCents);
+    const id = externalId(accountId, row.postedDate, row.description, row.rawVendorName, row.amountCents);
     const exists = await conn.runAndReadAll('SELECT id FROM account_transactions WHERE external_id = ?', [id]);
     if (exists.getRowObjects().length > 0) {
       result.duplicates++;
@@ -1993,32 +2151,64 @@ Append to the `scripts` object in `package.json`:
 
 ```ts
 import { getDb } from '../src/lib/server/db';
-import { createAccount } from '../src/lib/server/repos/accounts';
 import { listOwners, createBudget, createBudgetCategory } from '../src/lib/server/repos/budgets';
 import { createVendor } from '../src/lib/server/repos/vendors';
+import { createAccount } from '../src/lib/server/repos/accounts';
 import { importTransactions } from '../src/lib/server/importCsv';
 
 const conn = await getDb();
 
-const capone = await createAccount(conn, { name: 'Capital One Quicksilver', bank: 'capital_one', type: 'credit' });
-const bmo = await createAccount(conn, { name: 'BMO Checking', bank: 'bmo', type: 'debit' });
+async function ensureAccount(name: string, bank: string, type: string) {
+  const existing = await conn.runAndReadAll('SELECT id, name FROM accounts WHERE name = ?', [name]);
+  const rows = existing.getRowObjects();
+  return rows.length > 0
+    ? { id: String(rows[0].id), name }
+    : createAccount(conn, { name, bank, type });
+}
+
+async function ensureBudget(ownerId: string, name: string) {
+  const existing = await conn.runAndReadAll('SELECT id FROM budgets WHERE owner_id = ? AND name = ?', [ownerId, name]);
+  const rows = existing.getRowObjects();
+  return rows.length > 0 ? { id: String(rows[0].id) } : createBudget(conn, { ownerId, name });
+}
+
+async function ensureCategory(budgetId: string, name: string, monthlyLimitCents: number) {
+  const existing = await conn.runAndReadAll('SELECT id FROM budget_categories WHERE budget_id = ? AND name = ?', [budgetId, name]);
+  const rows = existing.getRowObjects();
+  return rows.length > 0
+    ? { id: String(rows[0].id) }
+    : createBudgetCategory(conn, { budgetId, name, monthlyLimitCents });
+}
+
+async function ensureVendor(name: string, aliases: string[]) {
+  const existing = await conn.runAndReadAll('SELECT id FROM vendors WHERE name = ?', [name]);
+  const rows = existing.getRowObjects();
+  return rows.length > 0 ? { id: String(rows[0].id) } : createVendor(conn, name, aliases);
+}
+
+const capone = await ensureAccount('Capital One Quicksilver', 'capital_one', 'credit');
+const bmo = await ensureAccount('BMO Checking', 'bmo', 'debit');
 
 const me = (await listOwners(conn)).find((o) => o.name === 'Me')!;
-const wife = (await listOwners(conn)).find((o) => o.name === 'Wife')!;
-const personal = await createBudget(conn, { ownerId: me.id, name: 'Personal' });
-const family = await createBudget(conn, { ownerId: wife.id, name: 'Household' });
-const gaming = await createBudgetCategory(conn, { budgetId: personal.id, name: 'Gaming', monthlyLimitCents: 10000 });
-const groceries = await createBudgetCategory(conn, { budgetId: family.id, name: 'Groceries', monthlyLimitCents: 60000 });
+const family = (await listOwners(conn)).find((o) => o.name === 'Family')!;
+const personal = await ensureBudget(me.id, 'Personal');
+const familyBudget = await ensureBudget(family.id, 'Household');
+const gaming = await ensureCategory(personal.id, 'Gaming', 10000);
+const groceries = await ensureCategory(familyBudget.id, 'Groceries', 60000);
 
-const amazon = await createVendor(conn, 'Amazon', ['AMZN MKTP US']);
-const shell = await createVendor(conn, 'Shell', ['SHELL OIL']);
+const amazon = await ensureVendor('Amazon', ['AMZN MKTP US']);
+const shell = await ensureVendor('Shell', ['SHELL OIL']);
 
 await conn.run(
   `INSERT INTO rules (id, name, description_matcher, amount_operator, amount_cents, budget_category_id, priority, enabled)
-   VALUES (?, 'Amazon', '^AMZN', 'any', NULL, ?, 1, true), (?, 'Shell', 'SHELL', 'any', NULL, ?, 2, true)`,
+   VALUES (?, 'Amazon', '^AMZN', 'any', NULL, ?, 1, true), (?, 'Shell', 'SHELL', 'any', NULL, ?, 2, true)
+   ON CONFLICT (id) DO NOTHING`,
   ['r-amazon', gaming.id, 'r-shell', groceries.id]
 );
-await conn.run('INSERT INTO rule_vendors (rule_id, vendor_id) VALUES (?, ?), (?, ?)', ['r-amazon', amazon.id, 'r-shell', shell.id]);
+await conn.run(
+  'INSERT INTO rule_vendors (rule_id, vendor_id) VALUES (?, ?), (?, ?) ON CONFLICT (rule_id, vendor_id) DO NOTHING',
+  ['r-amazon', amazon.id, 'r-shell', shell.id]
+);
 
 const txns = [
   { postedDate: '2026-07-01', description: 'AMZN MKTP US', rawVendorName: 'AMZN MKTP US', amountCents: -4567 },
@@ -2031,8 +2221,10 @@ await importTransactions(conn, bmo.id, txns.slice(3));
 
 console.log('Sample data seeded.');
 console.log('Accounts:', capone.name, 'and', bmo.name);
-console.log('Categories:', gaming.name, ',', groceries.name);
+console.log('Categories: Gaming, Groceries');
 ```
+
+The script is idempotent: accounts/budgets/categories/vendors are looked up before insert, rules and rule-vendor links use `ON CONFLICT ... DO NOTHING`, and transactions dedupe by `external_id` — running it twice against the same DB is safe.
 
 - [ ] **Step 3: Write the import CLI script**
 
@@ -2059,15 +2251,20 @@ if (!account) {
 }
 
 const csvText = readFileSync(filePath, 'utf8');
-const rows = parseBankCsv(account.bank, csvText);
-const result = await importTransactions(conn, account.id, rows);
-console.log(`Imported ${result.imported}, duplicates ${result.duplicates}, categorized ${result.categorized}`);
+const parsed = parseBankCsv(account.bank, csvText);
+for (const err of parsed.errors) console.error(`SKIPPED ${err}`);
+const result = await importTransactions(conn, account.id, parsed.rows);
+console.log(`Imported ${result.imported}, duplicates ${result.duplicates}, categorized ${result.categorized}, parse errors ${parsed.errors.length}`);
 ```
 
 - [ ] **Step 4: Verify the sample-data script runs**
 
 Run: `FINANCE_DB_PATH=/tmp/opencode/finance-sample.db npm run sample-data`
 Expected: prints "Sample data seeded." and creates `/tmp/opencode/finance-sample.db`.
+
+Then run it a second time against the same DB:
+Run: `FINANCE_DB_PATH=/tmp/opencode/finance-sample.db npm run sample-data`
+Expected: still prints "Sample data seeded." with no errors and no duplicate accounts/rules (idempotency check).
 
 - [ ] **Step 5: Verify the import CLI script runs**
 
@@ -2088,7 +2285,7 @@ Copy the account id whose name starts with "Capital One", then:
 FINANCE_DB_PATH=/tmp/opencode/finance-sample.db npm run import -- <caponeAccountId> src/lib/parsers/fixtures/capitalOne-sample.csv
 ```
 
-Expected: prints `Imported 3, duplicates 0, categorized N`.
+Expected: prints `Imported 3, duplicates 0, categorized N, parse errors 0`.
 
 - [ ] **Step 6: Commit**
 
@@ -2305,18 +2502,30 @@ export const load: PageServerLoad = async () => {
 `src/routes/api/accounts/+server.ts`:
 
 ```ts
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
-import { createAccount } from '$lib/server/repos/accounts';
+import { listAccounts, createAccount } from '$lib/server/repos/accounts';
+
+const BANKS = ['capital_one', 'bmo'];
+const TYPES = ['credit', 'debit'];
+
+export const GET: RequestHandler = async () => {
+  const conn = await getDb();
+  return json(await listAccounts(conn));
+};
 
 export const POST: RequestHandler = async ({ request }) => {
   const body = await request.json();
+  const bank = String(body.bank);
+  const type = String(body.type);
+  if (!BANKS.includes(bank)) throw error(400, `Invalid bank: ${bank}`);
+  if (!TYPES.includes(type)) throw error(400, `Invalid type: ${type}`);
   const conn = await getDb();
   const account = await createAccount(conn, {
     name: String(body.name),
-    bank: String(body.bank),
-    type: String(body.type)
+    bank,
+    type
   });
   return json(account);
 };
@@ -2358,14 +2567,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
   if (!(file instanceof File)) throw error(400, 'No file uploaded');
 
   const csvText = await file.text();
-  let rows;
+  let parsed;
   try {
-    rows = parseBankCsv(account.bank, csvText);
+    parsed = parseBankCsv(account.bank, csvText);
   } catch (err) {
     throw error(400, `Could not parse CSV: ${(err as Error).message}`);
   }
-  const result = await importTransactions(conn, account.id, rows);
-  return json(result);
+  const result = await importTransactions(conn, account.id, parsed.rows);
+  return json({ ...result, parseErrors: parsed.errors });
 };
 ```
 
@@ -2381,6 +2590,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
   let name = $state('');
   let bank = $state('capital_one');
   let type = $state('credit');
+  let renameFor = $state('');
+  let renameName = $state('');
 
   async function addAccount(e: SubmitEvent) {
     e.preventDefault();
@@ -2397,6 +2608,23 @@ export const POST: RequestHandler = async ({ params, request }) => {
     const form = new FormData();
     form.append('file', file);
     await fetch(`/api/accounts/${accountId}/import`, { method: 'POST', body: form });
+    invalidateAll();
+  }
+
+  function startRename(accountId: string, currentName: string) {
+    renameFor = accountId;
+    renameName = currentName;
+  }
+
+  async function submitRename(e: SubmitEvent) {
+    e.preventDefault();
+    await fetch(`/api/accounts/${renameFor}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: renameName })
+    });
+    renameFor = '';
+    renameName = '';
     invalidateAll();
   }
 </script>
@@ -2423,7 +2651,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 <ul>
   {#each data.accounts as account}
     <li>
-      {account.name} ({account.bank}, {account.type})
+      {#if renameFor === account.id}
+        <form onsubmit={submitRename}>
+          <input bind:value={renameName} />
+          <button type="submit">Rename</button>
+          <button type="button" onclick={() => (renameFor = '')}>Cancel</button>
+        </form>
+      {:else}
+        <span>{account.name} ({account.bank}, {account.type})</span>
+        <button onclick={() => startRename(account.id, account.name)}>Rename</button>
+      {/if}
       <input
         type="file"
         accept=".csv"
@@ -2440,7 +2677,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 - [ ] **Step 4: Verify build and endpoints**
 
 Run: `npm run check && npm run build`
-Then start dev (`FINANCE_DB_PATH=/tmp/opencode/finance-dev.db npm run dev &`), create an account, and import the Capital One fixture:
+Then start dev (`FINANCE_DB_PATH=/tmp/opencode/finance-dev.db npm run dev &`), create an account, list it, rename it, and import the Capital One fixture:
 
 ```bash
 curl -s -X POST http://localhost:5173/api/accounts \
@@ -2448,7 +2685,17 @@ curl -s -X POST http://localhost:5173/api/accounts \
   -d '{"name":"CapOne","bank":"capital_one","type":"credit"}'
 ```
 
-Expected: returns the created account JSON with an `id`. Stop the dev server after.
+Expected: returns the created account JSON with an `id` (copy it).
+
+```bash
+curl -s http://localhost:5173/api/accounts
+curl -s -X PATCH http://localhost:5173/api/accounts/<id> \
+  -H 'content-type: application/json' \
+  -d '{"name":"CapOne Renamed"}'
+curl -s -X POST http://localhost:5173/api/accounts/<id>/import -F file=@src/lib/parsers/fixtures/capitalOne-sample.csv
+```
+
+Expected: `GET` returns the account list, `PATCH` returns `{"ok":true}`, and the import returns `{"imported":3,"duplicates":0,"errors":[],"categorized":N,"parseErrors":[]}`. Stop the dev server after.
 
 - [ ] **Step 5: Commit**
 
@@ -2642,11 +2889,13 @@ git commit -m "feat: add vendors page"
 
 **Files:**
 - Create: `src/routes/rules/+page.server.ts`, `src/routes/rules/+page.svelte`
-- Create: `src/routes/api/rules/+server.ts`, `src/routes/api/rules/[id]/+server.ts`, `src/routes/api/rules/[id]/test/+server.ts`
+- Create: `src/routes/api/rules/+server.ts`, `src/routes/api/rules/[id]/+server.ts`, `src/routes/api/rules/[id]/test/+server.ts`, `src/routes/api/rules/[id]/move/+server.ts`
 
 **Interfaces:**
-- Consumes: `listRules`, `createRule`, `updateRule`, `deleteRule`, `listBudgetCategories`, `listVendors`, `categorizeUnreviewed`, `ruleMatches`, `RuleSpec`
-- Produces: `/rules` page (create/edit/enable/delete rules, test a rule against a transaction); `POST /api/rules`, `PATCH /api/rules/[id]`, `DELETE /api/rules/[id]`, `POST /api/rules/[id]/test`.
+- Consumes: `listRules`, `createRule`, `updateRule`, `deleteRule`, `moveRule`, `listBudgetCategories`, `listVendors`, `categorizeUnreviewed`, `ruleMatches`, `isValidRegex`, `RuleSpec`
+- Produces: `/rules` page (create/edit/enable/delete/reorder rules, test a rule against a transaction); `POST /api/rules`, `PATCH /api/rules/[id]`, `DELETE /api/rules/[id]`, `POST /api/rules/[id]/test`, `POST /api/rules/[id]/move`.
+
+Regex validation: rule create and update reject a malformed `descriptionMatcher` with `400 Invalid regex: ...`, so a bad pattern can never be saved.
 
 - [ ] **Step 1: Write the page load function**
 
@@ -2674,18 +2923,23 @@ export const load: PageServerLoad = async () => {
 `src/routes/api/rules/+server.ts`:
 
 ```ts
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { createRule } from '$lib/server/repos/rules';
 import { categorizeUnreviewed } from '$lib/server/importCsv';
+import { isValidRegex } from '$lib/matchers/rules';
 
 export const POST: RequestHandler = async ({ request }) => {
   const body = await request.json();
+  const descriptionMatcher = body.descriptionMatcher ? String(body.descriptionMatcher) : null;
+  if (descriptionMatcher && !isValidRegex(descriptionMatcher)) {
+    throw error(400, `Invalid regex: ${descriptionMatcher}`);
+  }
   const conn = await getDb();
   const rule = await createRule(conn, {
     name: String(body.name),
-    descriptionMatcher: body.descriptionMatcher ? String(body.descriptionMatcher) : null,
+    descriptionMatcher,
     amountOperator: body.amountOperator ?? 'any',
     amountCents: body.amountCents == null ? null : Number(body.amountCents),
     budgetCategoryId: String(body.budgetCategoryId),
@@ -2699,14 +2953,19 @@ export const POST: RequestHandler = async ({ request }) => {
 `src/routes/api/rules/[id]/+server.ts`:
 
 ```ts
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { updateRule, deleteRule } from '$lib/server/repos/rules';
 import { categorizeUnreviewed } from '$lib/server/importCsv';
+import { isValidRegex } from '$lib/matchers/rules';
 
 export const PATCH: RequestHandler = async ({ params, request }) => {
   const body = await request.json();
+  if (body.descriptionMatcher) {
+    const pattern = String(body.descriptionMatcher);
+    if (!isValidRegex(pattern)) throw error(400, `Invalid regex: ${pattern}`);
+  }
   const conn = await getDb();
   await updateRule(conn, params.id, {
     name: body.name !== undefined ? String(body.name) : undefined,
@@ -2760,6 +3019,22 @@ export const POST: RequestHandler = async ({ params, request }) => {
 };
 ```
 
+`src/routes/api/rules/[id]/move/+server.ts`:
+
+```ts
+import { json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { getDb } from '$lib/server/db';
+import { moveRule } from '$lib/server/repos/rules';
+
+export const POST: RequestHandler = async ({ params, request }) => {
+  const body = await request.json();
+  const conn = await getDb();
+  await moveRule(conn, params.id, body.direction === 'down' ? 'down' : 'up');
+  return json({ ok: true });
+};
+```
+
 - [ ] **Step 3: Write the rules page**
 
 `src/routes/rules/+page.svelte`:
@@ -2775,6 +3050,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
   let amountCents = $state('');
   let budgetCategoryId = $state('');
   let selectedVendors = $state([]);
+
+  let editRuleId = $state('');
+  let editName = $state('');
+  let editDescriptionMatcher = $state('');
+  let editAmountOperator = $state('any');
+  let editAmountCents = $state('');
+  let editBudgetCategoryId = $state('');
+  let editVendorIds = $state<string[]>([]);
 
   let testRuleId = $state('');
   let testDescription = $state('');
@@ -2805,6 +3088,38 @@ export const POST: RequestHandler = async ({ params, request }) => {
     invalidateAll();
   }
 
+  function startEdit(rule: {
+    id: string; name: string; descriptionMatcher: string | null;
+    amountOperator: string; amountCents: number | null;
+    budgetCategoryId: string; vendorIds: string[]
+  }) {
+    editRuleId = rule.id;
+    editName = rule.name;
+    editDescriptionMatcher = rule.descriptionMatcher ?? '';
+    editAmountOperator = rule.amountOperator;
+    editAmountCents = rule.amountCents == null ? '' : (rule.amountCents / 100).toString();
+    editBudgetCategoryId = rule.budgetCategoryId;
+    editVendorIds = [...rule.vendorIds];
+  }
+
+  async function saveEdit(e: SubmitEvent) {
+    e.preventDefault();
+    await fetch(`/api/rules/${editRuleId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: editName,
+        descriptionMatcher: editDescriptionMatcher || null,
+        amountOperator: editAmountOperator,
+        amountCents: editAmountCents === '' ? null : Math.round(Number(editAmountCents) * 100),
+        budgetCategoryId: editBudgetCategoryId,
+        vendorIds: editVendorIds
+      })
+    });
+    editRuleId = '';
+    invalidateAll();
+  }
+
   async function toggle(ruleId: string, enabled: boolean) {
     await fetch(`/api/rules/${ruleId}`, {
       method: 'PATCH',
@@ -2816,6 +3131,15 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
   async function remove(ruleId: string) {
     await fetch(`/api/rules/${ruleId}`, { method: 'DELETE' });
+    invalidateAll();
+  }
+
+  async function move(ruleId: string, direction: 'up' | 'down') {
+    await fetch(`/api/rules/${ruleId}/move`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ direction })
+    });
     invalidateAll();
   }
 
@@ -2862,12 +3186,44 @@ export const POST: RequestHandler = async ({ params, request }) => {
   <button type="submit">Add rule</button>
 </form>
 
+{#if editRuleId}
+  <form onsubmit={saveEdit}>
+    <h2>Editing {editName}</h2>
+    <input bind:value={editName} placeholder="Rule name" />
+    <input bind:value={editDescriptionMatcher} placeholder="Description regex (optional)" />
+    <select bind:value={editAmountOperator}>
+      <option value="any">any amount</option>
+      <option value="eq">=</option>
+      <option value="lt">&lt;</option>
+      <option value="lte">&le;</option>
+      <option value="gt">&gt;</option>
+      <option value="gte">&ge;</option>
+    </select>
+    <input bind:value={editAmountCents} placeholder="Amount ($)" type="number" step="0.01" />
+    <select bind:value={editBudgetCategoryId}>
+      {#each data.categories as cat}
+        <option value={cat.id}>{cat.name}</option>
+      {/each}
+    </select>
+    <select bind:value={editVendorIds} multiple>
+      {#each data.vendors as v}
+        <option value={v.id}>{v.name}</option>
+      {/each}
+    </select>
+    <button type="submit">Save</button>
+    <button type="button" onclick={() => (editRuleId = '')}>Cancel</button>
+  </form>
+{/if}
+
 <ul>
   {#each data.rules as rule}
     <li>
       <strong>{rule.name}</strong>
       {rule.enabled ? 'on' : 'off'} &middot; priority {rule.priority}
       {#if rule.descriptionMatcher}<code>{rule.descriptionMatcher}</code>{/if}
+      <button onclick={() => move(rule.id, 'up')}>&uarr;</button>
+      <button onclick={() => move(rule.id, 'down')}>&darr;</button>
+      <button onclick={() => startEdit(rule)}>Edit</button>
       <button onclick={() => toggle(rule.id, rule.enabled)}>{rule.enabled ? 'Disable' : 'Enable'}</button>
       <button onclick={() => remove(rule.id)}>Delete</button>
 
@@ -2889,10 +3245,31 @@ export const POST: RequestHandler = async ({ params, request }) => {
 </ul>
 ```
 
-- [ ] **Step 4: Verify build**
+- [ ] **Step 4: Verify build and endpoints**
 
 Run: `npm run check && npm run build`
-Expected: check passes, build succeeds.
+Then start dev (`FINANCE_DB_PATH=/tmp/opencode/finance-dev.db npm run dev &`) and exercise the rules API:
+
+```bash
+curl -s -X POST http://localhost:5173/api/rules \
+  -H 'content-type: application/json' \
+  -d '{"name":"Amazon","descriptionMatcher":"(","budgetCategoryId":"<catId>"}'
+```
+
+Expected: returns `400 {"message":"Invalid regex: ("}` — a bad pattern is rejected.
+
+Then create a valid rule (use a category id from the seeded data) and reorder it:
+
+```bash
+curl -s -X POST http://localhost:5173/api/rules \
+  -H 'content-type: application/json' \
+  -d '{"name":"Amazon","descriptionMatcher":"^AMZN","budgetCategoryId":"<catId>"}'
+curl -s -X POST http://localhost:5173/api/rules/<ruleId>/move \
+  -H 'content-type: application/json' \
+  -d '{"direction":"down"}'
+```
+
+Expected: creation returns the rule JSON; move returns `{"ok":true}`. Stop the dev server after.
 
 - [ ] **Step 5: Commit**
 
@@ -3169,8 +3546,8 @@ git commit -m "feat: add budgets page"
 - Create: `src/routes/api/transactions/[id]/assign/+server.ts`
 
 **Interfaces:**
-- Consumes: `listTransactions`, `listAccounts`, `listVendors`, `ensureBudgetCategoryMonth`, `assignTransaction`
-- Produces: `/transactions` page (filter by account/month/status/search, re-assign a transaction's category); `POST /api/transactions/[id]/assign`.
+- Consumes: `listTransactions`, `listAccounts`, `listVendors`, `listBudgetCategories`, `ensureBudgetCategoryMonth`, `assignTransaction`
+- Produces: `/transactions` page (filter by account/month/status/search, re-assign a transaction's category via a per-row dropdown); `POST /api/transactions/[id]/assign`.
 
 - [ ] **Step 1: Write the page load function**
 
@@ -3182,6 +3559,7 @@ import { getDb } from '$lib/server/db';
 import { listTransactions } from '$lib/server/repos/transactions';
 import { listAccounts } from '$lib/server/repos/accounts';
 import { listVendors } from '$lib/server/repos/vendors';
+import { listBudgetCategories } from '$lib/server/repos/budgets';
 
 export const load: PageServerLoad = async ({ url }) => {
   const conn = await getDb();
@@ -3193,7 +3571,8 @@ export const load: PageServerLoad = async ({ url }) => {
   };
 
   const txs = await listTransactions(conn, filters);
-  const accounts = new Map((await listAccounts(conn)).map((a) => [a.id, a.name]));
+  const accounts = await listAccounts(conn);
+  const accountNames = new Map(accounts.map((a) => [a.id, a.name]));
   const vendors = new Map((await listVendors(conn)).map((v) => [v.id, v.name]));
   const monthCats = await conn.runAndReadAll(
     `SELECT bcm.id, bc.name AS category_name FROM budget_category_months bcm
@@ -3203,9 +3582,11 @@ export const load: PageServerLoad = async ({ url }) => {
 
   return {
     filters,
+    accounts,
+    budgetCategories: await listBudgetCategories(conn),
     transactions: txs.map((t) => ({
       ...t,
-      accountName: accounts.get(t.accountId) ?? '?',
+      accountName: accountNames.get(t.accountId) ?? '?',
       vendorName: t.vendorId ? (vendors.get(t.vendorId) ?? '?') : null,
       categoryName: t.budgetCategoryMonthId ? (categories.get(t.budgetCategoryMonthId) ?? '?') : null
     }))
@@ -3273,6 +3654,12 @@ export const POST: RequestHandler = async ({ params, request }) => {
 <form onsubmit={(e) => { e.preventDefault(); applyFilters(); }}>
   <input bind:value={search} placeholder="Search description" />
   <input type="month" bind:value={month} />
+  <select bind:value={account}>
+    <option value="">All accounts</option>
+    {#each data.accounts as a}
+      <option value={a.id}>{a.name}</option>
+    {/each}
+  </select>
   <select bind:value={status}>
     <option value="">All statuses</option>
     <option value="unreviewed">unreviewed</option>
@@ -3306,11 +3693,12 @@ export const POST: RequestHandler = async ({ params, request }) => {
         <td>{tx.categoryName ?? '—'}</td>
         <td>{tx.assignmentStatus}</td>
         <td>
-          <input
-            list={`cats-${tx.id}`}
-            onchange={(e) => assign(tx.id, (e.currentTarget as HTMLInputElement).value, tx.postedDate.slice(0, 7))}
-          />
-          <datalist id={`cats-${tx.id}`}></datalist>
+          <select onchange={(e) => assign(tx.id, (e.currentTarget as HTMLSelectElement).value, tx.postedDate.slice(0, 7))}>
+            <option value="">assign category</option>
+            {#each data.budgetCategories as cat}
+              <option value={cat.id}>{cat.name}</option>
+            {/each}
+          </select>
         </td>
       </tr>
     {/each}
@@ -3318,7 +3706,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 </table>
 ```
 
-Note: `applyFilters()` writes `account`, `month`, `status`, and `search` into the URL, so account filtering works too if you append `?account=<id>` manually. The page shows the four most useful filters (search, month, status); account filtering is still fully supported by the server-side `listTransactions` filters used in the load function.
+Note: picking a category from a row's dropdown posts to `/api/transactions/[id]/assign` with that transaction's posted month, so it always lands in the correct `budget_category_months` snapshot.
 
 - [ ] **Step 4: Verify build**
 
@@ -3342,7 +3730,7 @@ git commit -m "feat: add transactions page"
 
 **Interfaces:**
 - Consumes: `getUnreviewed`, `listAccounts`, `listVendors`, `listBudgetCategories`, `ensureBudgetCategoryMonth`, `assignTransaction`, `createRule`, `categorizeUnreviewed`
-- Produces: `/review` page (batch-assign unreviewed transactions, create a rule from a transaction); `POST /api/review/batch`, `POST /api/review/create-rule`.
+- Produces: `/review` page (batch-assign unreviewed transactions, create a rule from a transaction); `POST /api/review/batch`, `POST /api/review/create-rule`. The batch endpoint derives each transaction's posted month server-side, so a selection spanning multiple months is assigned to each transaction's own month snapshot.
 
 - [ ] **Step 1: Write the page load function**
 
@@ -3388,9 +3776,14 @@ import { assignTransaction } from '$lib/server/repos/transactions';
 export const POST: RequestHandler = async ({ request }) => {
   const body = await request.json();
   const conn = await getDb();
-  const month = await ensureBudgetCategoryMonth(conn, String(body.budgetCategoryId), String(body.month));
+  const budgetCategoryId = String(body.budgetCategoryId);
   for (const txId of body.txIds) {
-    await assignTransaction(conn, String(txId), month.id);
+    const tx = await conn.runAndReadAll('SELECT posted_date FROM account_transactions WHERE id = ?', [String(txId)]);
+    const rows = tx.getRowObjects();
+    if (rows.length === 0) continue;
+    const month = String(rows[0].posted_date).slice(0, 7);
+    const bcm = await ensureBudgetCategoryMonth(conn, budgetCategoryId, month);
+    await assignTransaction(conn, String(txId), bcm.id);
   }
   return json({ ok: true });
 };
@@ -3454,11 +3847,10 @@ export const POST: RequestHandler = async ({ request }) => {
   async function batchAssign() {
     if (!batchCategoryId || selected.size === 0) return;
     const txIds = [...selected];
-    const month = data.transactions[0]?.postedDate.slice(0, 7) ?? '';
     await fetch('/api/review/batch', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ txIds, budgetCategoryId: batchCategoryId, month })
+      body: JSON.stringify({ txIds, budgetCategoryId: batchCategoryId })
     });
     selected = new Set();
     invalidateAll();
@@ -3591,7 +3983,9 @@ Expected: JSON array containing the sample accounts; copy the Capital One accoun
 curl -s -X POST http://localhost:5173/api/accounts/<id>/import -F file=@src/lib/parsers/fixtures/capitalOne-sample.csv
 ```
 
-Expected: `{"imported":3,"duplicates":0,"errors":[],"categorized":...}` — the "PAYMENT THANK YOU" row has no matching rule, so it should stay unreviewed; verify on the dashboard that "transaction(s) need review" appears.
+Expected: `{"imported":3,"duplicates":0,"errors":[],"categorized":...,"parseErrors":[]}` — the "PAYMENT THANK YOU" row has no matching rule, so it should stay unreviewed; verify on the dashboard that "transaction(s) need review" appears.
+
+Then exercise the multi-month review path with the seeded data: select one transaction each from two different months in the review queue and batch-assign them to a single category. Confirm each transaction appears under its own month on the Budgets page (verify by checking `budget_category_months.month` matches each transaction's `posted_date` month).
 
 Stop the dev server.
 
