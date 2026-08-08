@@ -9,7 +9,10 @@ import {
 	updateBudgetCategoryLimit,
 	ensureBudgetCategoryMonth,
 	listBudgetCategoryMonths,
+	deleteBudgetCategory,
 } from './budgets';
+import { createAccount } from './accounts';
+import { createVendor } from './vendors';
 
 describe('budgets repo', () => {
 	it('lists seeded owners', async () => {
@@ -57,6 +60,53 @@ describe('budgets repo', () => {
 		const all = await listBudgetCategoryMonths(conn, '2026-07');
 		expect(all).toHaveLength(1);
 		expect(all[0].amount_cents).toBe(10000);
+	});
+
+	it('deleting a category returns its transactions to the review queue', async () => {
+		const conn = await createTestDb();
+		const account = await createAccount(conn, {
+			name: 'CapOne',
+			bank: 'capital_one',
+			type: 'credit',
+		});
+		const me = (await listOwners(conn)).find((o) => o.name === 'Me')!;
+		const budget = await createBudget(conn, { ownerId: me.id, name: 'Personal' });
+		const cat = await createBudgetCategory(conn, {
+			budgetId: budget.id,
+			name: 'Gaming',
+			monthlyLimitCents: 10000,
+		});
+		const snapshot = await ensureBudgetCategoryMonth(conn, cat.id, '2026-07');
+		await conn.run(
+			`INSERT INTO account_transactions
+       (id, account_id, external_id, posted_date, description, raw_vendor_name, amount_cents, budget_category_month_id, assignment_status, created_at)
+       VALUES ('t1', ?, 'e1', '2026-07-04', 'STEAM', 'STEAM', -2500, ?, 'manual', '2026-07-04')`,
+			[account.id, snapshot.id]
+		);
+		await conn.run(
+			`INSERT INTO rules (id, name, description_matcher, amount_operator, amount_cents, budget_category_id, priority, enabled)
+       VALUES ('r1', 'Steam', 'STEAM', 'any', NULL, ?, 1, true)`,
+			[cat.id]
+		);
+		const vendor = await createVendor(conn, 'Steam');
+		await conn.run("INSERT INTO rule_vendors (rule_id, vendor_id) VALUES ('r1', ?)", [vendor.id]);
+
+		await deleteBudgetCategory(conn, cat.id);
+
+		expect((await listBudgetCategories(conn)).some((c) => c.id === cat.id)).toBe(false);
+		expect(await listBudgetCategoryMonths(conn, '2026-07')).toHaveLength(0);
+
+		const tx = await conn.runAndReadAll(
+			'SELECT budget_category_month_id, assignment_status FROM account_transactions WHERE id = ?',
+			['t1']
+		);
+		expect(tx.getRowObjects()[0].budget_category_month_id).toBeNull();
+		expect(tx.getRowObjects()[0].assignment_status).toBe('unreviewed');
+
+		const rules = await conn.runAndReadAll('SELECT id FROM rules');
+		expect(rules.getRowObjects()).toHaveLength(0);
+		const ruleVendors = await conn.runAndReadAll('SELECT rule_id FROM rule_vendors');
+		expect(ruleVendors.getRowObjects()).toHaveLength(0);
 	});
 
 	it('updating a limit preserves past snapshots and applies to future months', async () => {

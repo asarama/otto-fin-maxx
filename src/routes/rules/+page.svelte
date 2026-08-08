@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import Button from '$lib/components/Button.svelte';
+	import ConfirmDelete from '$lib/components/ConfirmDelete.svelte';
+	import IconButton from '$lib/components/IconButton.svelte';
 	let { data } = $props();
 
 	let name = $state('');
@@ -7,7 +10,7 @@
 	let amountOperator = $state('any');
 	let amountCents = $state('');
 	let budgetCategoryId = $state('');
-	let selectedVendors = $state([]);
+	let selectedVendors = $state<string[]>([]);
 
 	let editRuleId = $state('');
 	let editName = $state('');
@@ -93,7 +96,7 @@
 
 	async function remove(ruleId: string) {
 		await fetch(`/api/rules/${ruleId}`, { method: 'DELETE' });
-		invalidateAll();
+		await invalidateAll();
 	}
 
 	async function move(ruleId: string, direction: 'up' | 'down') {
@@ -122,10 +125,14 @@
 
 <h1>Rules</h1>
 
-<form onsubmit={addRule}>
-	<input bind:value={name} placeholder="Rule name" />
-	<input bind:value={descriptionMatcher} placeholder="Description regex (optional)" />
-	<select bind:value={amountOperator}>
+<form class="form-row" onsubmit={addRule}>
+	<input class="control" bind:value={name} placeholder="Rule name" />
+	<input
+		class="control mono"
+		bind:value={descriptionMatcher}
+		placeholder="Description regex (optional)"
+	/>
+	<select class="control" bind:value={amountOperator}>
 		<option value="any">any amount</option>
 		<option value="eq">=</option>
 		<option value="lt">&lt;</option>
@@ -133,82 +140,232 @@
 		<option value="gt">&gt;</option>
 		<option value="gte">&ge;</option>
 	</select>
-	<input bind:value={amountCents} placeholder="Amount ($)" type="number" step="0.01" />
-	<select bind:value={budgetCategoryId}>
+	<input
+		class="control numeric"
+		bind:value={amountCents}
+		placeholder="Amount ($)"
+		type="number"
+		step="0.01"
+	/>
+	<select class="control" bind:value={budgetCategoryId}>
 		<option value="" disabled>Target category</option>
 		{#each data.categories as cat (cat.id)}
 			<option value={cat.id}>{cat.name}</option>
 		{/each}
 	</select>
-	<select bind:value={selectedVendors} multiple>
+	<select class="control multi" bind:value={selectedVendors} multiple aria-label="Vendors">
 		{#each data.vendors as v (v.id)}
 			<option value={v.id}>{v.name}</option>
 		{/each}
 	</select>
-	<button type="submit">Add rule</button>
+	<Button type="submit" variant="primary">Add rule</Button>
 </form>
 
 {#if editRuleId}
-	<form onsubmit={saveEdit}>
+	<form class="edit" onsubmit={saveEdit}>
 		<h2>Editing {editName}</h2>
-		<input bind:value={editName} placeholder="Rule name" />
-		<input bind:value={editDescriptionMatcher} placeholder="Description regex (optional)" />
-		<select bind:value={editAmountOperator}>
-			<option value="any">any amount</option>
-			<option value="eq">=</option>
-			<option value="lt">&lt;</option>
-			<option value="lte">&le;</option>
-			<option value="gt">&gt;</option>
-			<option value="gte">&ge;</option>
-		</select>
-		<input bind:value={editAmountCents} placeholder="Amount ($)" type="number" step="0.01" />
-		<select bind:value={editBudgetCategoryId}>
-			{#each data.categories as cat (cat.id)}
-				<option value={cat.id}>{cat.name}</option>
-			{/each}
-		</select>
-		<select bind:value={editVendorIds} multiple>
-			{#each data.vendors as v (v.id)}
-				<option value={v.id}>{v.name}</option>
-			{/each}
-		</select>
-		<button type="submit">Save</button>
-		<button type="button" onclick={() => (editRuleId = '')}>Cancel</button>
+		<div class="form-row">
+			<input class="control" bind:value={editName} placeholder="Rule name" />
+			<input
+				class="control mono"
+				bind:value={editDescriptionMatcher}
+				placeholder="Description regex (optional)"
+			/>
+			<select class="control" bind:value={editAmountOperator}>
+				<option value="any">any amount</option>
+				<option value="eq">=</option>
+				<option value="lt">&lt;</option>
+				<option value="lte">&le;</option>
+				<option value="gt">&gt;</option>
+				<option value="gte">&ge;</option>
+			</select>
+			<input
+				class="control numeric"
+				bind:value={editAmountCents}
+				placeholder="Amount ($)"
+				type="number"
+				step="0.01"
+			/>
+			<select class="control" bind:value={editBudgetCategoryId} aria-label="Target category">
+				{#each data.categories as cat (cat.id)}
+					<option value={cat.id}>{cat.name}</option>
+				{/each}
+			</select>
+			<select class="control multi" bind:value={editVendorIds} multiple aria-label="Vendors">
+				{#each data.vendors as v (v.id)}
+					<option value={v.id}>{v.name}</option>
+				{/each}
+			</select>
+			<Button type="submit" variant="primary">Save</Button>
+			<Button variant="ghost" onclick={() => (editRuleId = '')}>Cancel</Button>
+		</div>
 	</form>
 {/if}
 
-<ul>
+<ul class="rows">
 	{#each data.rules as rule (rule.id)}
 		<li>
-			<strong>{rule.name}</strong>
-			{rule.enabled ? 'on' : 'off'} &middot; priority {rule.priority}
-			{#if rule.descriptionMatcher}<code>{rule.descriptionMatcher}</code>{/if}
-			<button onclick={() => move(rule.id, 'up')}>&uarr;</button>
-			<button onclick={() => move(rule.id, 'down')}>&darr;</button>
-			<button onclick={() => startEdit(rule)}>Edit</button>
-			<button onclick={() => toggle(rule.id, rule.enabled)}
-				>{rule.enabled ? 'Disable' : 'Enable'}</button
-			>
-			<button onclick={() => remove(rule.id)}>Delete</button>
+			<div class="head">
+				<span class="title">
+					<strong>{rule.name}</strong>
+					<em>{rule.enabled ? 'on' : 'off'} &middot; priority {rule.priority}</em>
+					{#if rule.descriptionMatcher}<code>{rule.descriptionMatcher}</code>{/if}
+				</span>
+				<span class="actions">
+					<IconButton label="Move {rule.name} up" glyph="↑" onclick={() => move(rule.id, 'up')} />
+					<IconButton
+						label="Move {rule.name} down"
+						glyph="↓"
+						onclick={() => move(rule.id, 'down')}
+					/>
+					<Button variant="secondary" size="sm" onclick={() => startEdit(rule)}>Edit</Button>
+					<Button variant="ghost" size="sm" onclick={() => toggle(rule.id, rule.enabled)}>
+						{rule.enabled ? 'Disable' : 'Enable'}
+					</Button>
+					<ConfirmDelete
+						label="Delete rule {rule.name}"
+						confirmLabel="Delete rule"
+						onconfirm={() => remove(rule.id)}
+					/>
+				</span>
+			</div>
 
 			<details>
 				<summary>Test</summary>
-				<input bind:value={testDescription} placeholder="Description" />
-				<select bind:value={testVendorId}>
-					<option value="">no vendor</option>
-					{#each data.vendors as v (v.id)}
-						<option value={v.id}>{v.name}</option>
-					{/each}
-				</select>
-				<input bind:value={testAmount} placeholder="Amount ($)" type="number" step="0.01" />
-				<button
-					onclick={() => {
-						testRuleId = rule.id;
-						testRule(rule.id);
-					}}>Run test</button
-				>
-				{#if testRuleId === rule.id && testResult}<span>{testResult}</span>{/if}
+				<div class="form-row">
+					<input class="control" bind:value={testDescription} placeholder="Description" />
+					<select class="control" bind:value={testVendorId} aria-label="Test vendor">
+						<option value="">no vendor</option>
+						{#each data.vendors as v (v.id)}
+							<option value={v.id}>{v.name}</option>
+						{/each}
+					</select>
+					<input
+						class="control numeric"
+						bind:value={testAmount}
+						placeholder="Amount ($)"
+						type="number"
+						step="0.01"
+					/>
+					<Button
+						variant="secondary"
+						size="sm"
+						onclick={() => {
+							testRuleId = rule.id;
+							testRule(rule.id);
+						}}
+					>
+						Run test
+					</Button>
+					{#if testRuleId === rule.id && testResult}
+						<span class="result" class:match={testResult === 'MATCHES'}>{testResult}</span>
+					{/if}
+				</div>
 			</details>
 		</li>
 	{/each}
 </ul>
+
+<style>
+	h2 {
+		margin-bottom: var(--space-3);
+		font-size: var(--text-lg);
+	}
+
+	.form-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.edit {
+		margin-top: var(--space-5);
+		padding: var(--space-4);
+		border-radius: var(--radius-xl);
+		background: var(--surface-primary);
+	}
+
+	.multi {
+		min-width: 14ch;
+		max-height: 96px;
+	}
+
+	.mono {
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+	}
+
+	.rows {
+		list-style: none;
+		margin: var(--space-5) 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-2);
+	}
+
+	.rows > li {
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-md);
+	}
+
+	.rows > li:hover {
+		background: var(--surface-hover);
+	}
+
+	.head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+	}
+
+	.title {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.title em {
+		color: var(--text-secondary);
+		font-size: var(--text-sm);
+		font-style: normal;
+	}
+
+	.title code {
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		padding: 0 var(--space-2);
+		border-radius: var(--radius-sm);
+		background: var(--surface-secondary);
+	}
+
+	.actions {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+	}
+
+	summary {
+		margin-top: var(--space-1);
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+		cursor: pointer;
+	}
+
+	details[open] summary {
+		margin-bottom: var(--space-2);
+	}
+
+	.result {
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.result.match {
+		color: var(--text-positive);
+	}
+</style>

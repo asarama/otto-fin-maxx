@@ -1,5 +1,6 @@
 @import '../styles/styles.css';
 @import '../styles/tokens.css';
+@import './lib/components/controls.css';
 
 *,
 *::before,

@@ -97,6 +97,26 @@ export async function updateBudgetCategoryLimit(
 	]);
 }
 
+export async function deleteBudgetCategory(conn: DuckDBConnection, id: string): Promise<void> {
+	await conn.run(
+		`UPDATE account_transactions
+     SET budget_category_month_id = NULL, assignment_status = 'unreviewed'
+     WHERE budget_category_month_id IN (
+       SELECT id FROM budget_category_months WHERE budget_category_id = ?
+     )`,
+		[id]
+	);
+	await conn.run(
+		`DELETE FROM rule_vendors WHERE rule_id IN (
+       SELECT id FROM rules WHERE budget_category_id = ?
+     )`,
+		[id]
+	);
+	await conn.run('DELETE FROM rules WHERE budget_category_id = ?', [id]);
+	await conn.run('DELETE FROM budget_category_months WHERE budget_category_id = ?', [id]);
+	await conn.run('DELETE FROM budget_categories WHERE id = ?', [id]);
+}
+
 function currentMonth(): string {
 	const d = new Date();
 	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
