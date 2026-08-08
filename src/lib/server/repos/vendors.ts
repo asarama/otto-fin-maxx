@@ -1,15 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import type { DuckDBConnection } from '@duckdb/node-api';
 
+export interface VendorAlias {
+	id: string;
+	name: string;
+}
+
 export interface Vendor {
 	id: string;
 	name: string;
-	aliases: string[];
+	aliases: VendorAlias[];
 }
 
 export async function listVendors(conn: DuckDBConnection): Promise<Vendor[]> {
 	const reader = await conn.runAndReadAll(
-		`SELECT v.id, v.name, va.name AS alias
+		`SELECT v.id, v.name, va.id AS alias_id, va.name AS alias
      FROM vendors v
      LEFT JOIN vendor_aliases va ON va.vendor_id = v.id
      ORDER BY v.name, va.name`
@@ -21,7 +26,7 @@ export async function listVendors(conn: DuckDBConnection): Promise<Vendor[]> {
 			byId.set(id, { id, name: String(row.name), aliases: [] });
 		}
 		if (row.alias !== null && row.alias !== undefined) {
-			byId.get(id)!.aliases.push(String(row.alias));
+			byId.get(id)!.aliases.push({ id: String(row.alias_id), name: String(row.alias) });
 		}
 	}
 	return [...byId.values()];
@@ -38,13 +43,16 @@ export async function createVendor(
 		name,
 		new Date().toISOString(),
 	]);
+	const created: VendorAlias[] = [];
 	for (const alias of aliases) {
+		const aliasId = randomUUID();
 		await conn.run(
 			'INSERT INTO vendor_aliases (id, vendor_id, name, created_at) VALUES (?, ?, ?, ?)',
-			[randomUUID(), id, alias, new Date().toISOString()]
+			[aliasId, id, alias, new Date().toISOString()]
 		);
+		created.push({ id: aliasId, name: alias });
 	}
-	return { id, name, aliases: [...aliases] };
+	return { id, name, aliases: created };
 }
 
 export async function addVendorAlias(
@@ -56,6 +64,25 @@ export async function addVendorAlias(
 		'INSERT INTO vendor_aliases (id, vendor_id, name, created_at) VALUES (?, ?, ?, ?)',
 		[randomUUID(), vendorId, name, new Date().toISOString()]
 	);
+}
+
+export async function deleteVendorAlias(conn: DuckDBConnection, aliasId: string): Promise<void> {
+	await conn.run('DELETE FROM vendor_aliases WHERE id = ?', [aliasId]);
+}
+
+export async function deleteVendor(conn: DuckDBConnection, id: string): Promise<void> {
+	await conn.run(
+		`UPDATE rules SET enabled = false WHERE id IN (
+       SELECT rule_id FROM rule_vendors WHERE vendor_id = ?
+       EXCEPT
+       SELECT rule_id FROM rule_vendors WHERE vendor_id <> ?
+     )`,
+		[id, id]
+	);
+	await conn.run('UPDATE account_transactions SET vendor_id = NULL WHERE vendor_id = ?', [id]);
+	await conn.run('DELETE FROM rule_vendors WHERE vendor_id = ?', [id]);
+	await conn.run('DELETE FROM vendor_aliases WHERE vendor_id = ?', [id]);
+	await conn.run('DELETE FROM vendors WHERE id = ?', [id]);
 }
 
 export async function mergeVendors(

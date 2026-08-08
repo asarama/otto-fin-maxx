@@ -21,7 +21,11 @@ export async function importTransactions(
 	rows: ParsedRow[]
 ): Promise<ImportResult> {
 	const result: ImportResult = { imported: 0, duplicates: 0, errors: [], categorized: 0 };
-	const vendors = await listVendors(conn);
+	const vendors = (await listVendors(conn)).map((v) => ({
+		id: v.id,
+		name: v.name,
+		aliases: v.aliases.map((a) => a.name),
+	}));
 
 	for (const row of rows) {
 		const id = externalId(

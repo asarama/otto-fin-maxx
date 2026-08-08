@@ -51,6 +51,11 @@ export async function createAccount(
 	return created;
 }
 
+export async function deleteAccount(conn: DuckDBConnection, id: string): Promise<void> {
+	await conn.run('DELETE FROM account_transactions WHERE account_id = ?', [id]);
+	await conn.run('DELETE FROM accounts WHERE id = ?', [id]);
+}
+
 export async function renameAccount(
 	conn: DuckDBConnection,
 	id: string,
