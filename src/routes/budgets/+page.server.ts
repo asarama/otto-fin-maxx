@@ -1,5 +1,7 @@
+import type { DuckDBConnection } from '@duckdb/node-api';
 import type { PageServerLoad } from './$types';
 import { getDb } from '$lib/server/db';
+import { addMonths, currentMonth } from '$lib/month';
 import {
 	listOwners,
 	listBudgets,
@@ -7,20 +9,7 @@ import {
 	ensureBudgetCategoryMonth,
 } from '$lib/server/repos/budgets';
 
-function currentMonth(): string {
-	const d = new Date();
-	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-export const load: PageServerLoad = async ({ url }) => {
-	const conn = await getDb();
-	const month = url.searchParams.get('month') ?? currentMonth();
-
-	const categories = await listBudgetCategories(conn);
-	for (const cat of categories) {
-		await ensureBudgetCategoryMonth(conn, cat.id, month);
-	}
-
+async function monthRows(conn: DuckDBConnection, month: string) {
 	const reader = await conn.runAndReadAll(
 		`SELECT bcm.id, bcm.budget_category_id, bcm.amount_cents,
             bc.name AS category_name, b.name AS budget_name, o.name AS owner_name,
@@ -35,20 +24,45 @@ export const load: PageServerLoad = async ({ url }) => {
      ORDER BY o.name, b.name, bc.name`,
 		[month]
 	);
+	return reader.getRowObjects().map((r) => ({
+		id: String(r.id),
+		budgetCategoryId: String(r.budget_category_id),
+		amountCents: Number(r.amount_cents),
+		spentCents: Number(r.spent_cents),
+		categoryName: String(r.category_name),
+		budgetName: String(r.budget_name),
+		ownerName: String(r.owner_name),
+	}));
+}
+
+export const load: PageServerLoad = async () => {
+	const conn = await getDb();
+	const month = addMonths(currentMonth(), -1);
+	const thisMonth = currentMonth();
+
+	const categories = await listBudgetCategories(conn);
+	for (const cat of categories) {
+		await ensureBudgetCategoryMonth(conn, cat.id, month);
+		await ensureBudgetCategoryMonth(conn, cat.id, thisMonth);
+	}
+
+	const lastRows = await monthRows(conn, month);
+	const thisRows = new Map((await monthRows(conn, thisMonth)).map((r) => [r.budgetCategoryId, r]));
+	const months = lastRows.map((r) => {
+		const t = thisRows.get(r.budgetCategoryId);
+		return {
+			...r,
+			thisMonthAmountCents: t?.amountCents ?? 0,
+			thisMonthSpentCents: t?.spentCents ?? 0,
+		};
+	});
 
 	return {
 		month,
+		thisMonth,
 		owners: await listOwners(conn),
 		budgets: await listBudgets(conn),
 		categories,
-		months: reader.getRowObjects().map((r) => ({
-			id: String(r.id),
-			budgetCategoryId: String(r.budget_category_id),
-			amountCents: Number(r.amount_cents),
-			spentCents: Number(r.spent_cents),
-			categoryName: String(r.category_name),
-			budgetName: String(r.budget_name),
-			ownerName: String(r.owner_name),
-		})),
+		months,
 	};
 };

@@ -1,8 +1,13 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import { centsToDollars } from '$lib/money';
+	import { monthLabel } from '$lib/month';
 	import Button from '$lib/components/Button.svelte';
+	import Card from '$lib/components/Card.svelte';
 	import ConfirmDelete from '$lib/components/ConfirmDelete.svelte';
+	import MoneyText from '$lib/components/MoneyText.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import StatTile from '$lib/components/StatTile.svelte';
 	let { data } = $props();
 
 	let ownerId = $state('');
@@ -10,16 +15,26 @@
 	let categoryBudgetId = $state('');
 	let categoryName = $state('');
 	let categoryLimit = $state('');
-	let month = $state(data.month);
 
 	const totals = $derived(
 		data.months.reduce(
 			(acc, m) => ({
-				spentCents: acc.spentCents + m.spentCents,
-				amountCents: acc.amountCents + m.amountCents,
+				thisMonthSpentCents: acc.thisMonthSpentCents + m.thisMonthSpentCents,
+				thisMonthAmountCents: acc.thisMonthAmountCents + m.thisMonthAmountCents,
+				lastMonthSpentCents: acc.lastMonthSpentCents + m.spentCents,
+				overCents: acc.overCents + Math.max(0, m.spentCents - m.amountCents),
 			}),
-			{ spentCents: 0, amountCents: 0 }
+			{
+				thisMonthSpentCents: 0,
+				thisMonthAmountCents: 0,
+				lastMonthSpentCents: 0,
+				overCents: 0,
+			}
 		)
+	);
+
+	const thisMonthRemainingCents = $derived(
+		totals.thisMonthAmountCents - totals.thisMonthSpentCents
 	);
 
 	async function addBudget(e: SubmitEvent) {
@@ -58,20 +73,32 @@
 		await fetch(`/api/budget-categories/${catId}`, { method: 'DELETE' });
 		await invalidateAll();
 	}
-
-	function changeMonth() {
-		const url = new URL(window.location.href);
-		url.searchParams.set('month', month);
-		window.location.href = url.toString();
-	}
 </script>
 
-<h1>Budgets</h1>
+<PageHeader title="Budgets" subtitle={`${monthLabel(data.month)} · previous month`} />
 
-<form class="form-row" onsubmit={changeMonth}>
-	<input class="control" type="month" bind:value={month} />
-	<Button type="submit" variant="secondary">View month</Button>
-</form>
+<div class="stats">
+	<Card>
+		<StatTile label="Spent this month" sub={monthLabel(data.thisMonth)}>
+			<MoneyText cents={totals.thisMonthSpentCents} tone="spend" size="xl" />
+		</StatTile>
+	</Card>
+	<Card>
+		<StatTile label="Remaining this month" sub={monthLabel(data.thisMonth)}>
+			<MoneyText cents={thisMonthRemainingCents} size="xl" />
+		</StatTile>
+	</Card>
+	<Card>
+		<StatTile label="Spent last month" sub={monthLabel(data.month)}>
+			<MoneyText cents={totals.lastMonthSpentCents} tone="spend" size="xl" />
+		</StatTile>
+	</Card>
+	<Card>
+		<StatTile label="Over last month" sub={monthLabel(data.month)}>
+			<MoneyText cents={totals.overCents} size="xl" />
+		</StatTile>
+	</Card>
+</div>
 
 <h2>Add budget</h2>
 <form class="form-row" onsubmit={addBudget}>
@@ -108,14 +135,19 @@
 <table>
 	<thead>
 		<tr>
-			<th>Owner</th>
-			<th>Budget</th>
-			<th>Category</th>
-			<th class="end">Spent</th>
-			<th class="end">Limit</th>
-			<th class="end">Remaining This Month</th>
-			<th class="end">Set limit</th>
-			<th></th>
+			<th rowspan="2">Owner</th>
+			<th rowspan="2">Budget</th>
+			<th rowspan="2">Category</th>
+			<th rowspan="2" class="center num">Limit</th>
+			<th colspan="2" class="center this-month">This month</th>
+			<th colspan="2" class="center last-month">Last month</th>
+			<th rowspan="2"></th>
+		</tr>
+		<tr>
+			<th class="center num this-month">Spent</th>
+			<th class="center num this-month">Remaining</th>
+			<th class="center num last-month">Spent</th>
+			<th class="center num last-month">Over</th>
 		</tr>
 	</thead>
 	<tbody>
@@ -124,19 +156,24 @@
 				<td>{m.ownerName}</td>
 				<td>{m.budgetName}</td>
 				<td>{m.categoryName}</td>
-				<td class="end">{centsToDollars(m.spentCents)}</td>
-				<td class="end">{centsToDollars(m.amountCents)}</td>
-				<td class="end">{centsToDollars(m.amountCents - m.spentCents)}</td>
-				<td class="end">
+				<td class="end num">
 					<input
 						class="control numeric limit"
 						type="number"
 						step="0.01"
-						value={centsToDollars(m.amountCents).replace(/[$,]/g, '')}
+						value={centsToDollars(m.thisMonthAmountCents).replace(/[$,]/g, '')}
 						onchange={(e) =>
 							updateLimit(m.budgetCategoryId, (e.currentTarget as HTMLInputElement).value)}
 					/>
 				</td>
+				<td class="end num this-month">{centsToDollars(m.thisMonthSpentCents)}</td>
+				<td class="end num this-month"
+					>{centsToDollars(m.thisMonthAmountCents - m.thisMonthSpentCents)}</td
+				>
+				<td class="end num last-month">{centsToDollars(m.spentCents)}</td>
+				<td class="end num last-month"
+					>{centsToDollars(Math.max(0, m.spentCents - m.amountCents))}</td
+				>
 				<td class="end">
 					<ConfirmDelete
 						label="Delete category {m.categoryName}"
@@ -151,16 +188,25 @@
 		<tfoot>
 			<tr>
 				<td colspan="3">Total &middot; {data.months.length} categories</td>
-				<td class="end">{centsToDollars(totals.spentCents)}</td>
-				<td class="end">{centsToDollars(totals.amountCents)}</td>
-				<td class="end">{centsToDollars(totals.amountCents - totals.spentCents)}</td>
-				<td colspan="2"></td>
+				<td class="end num">{centsToDollars(totals.thisMonthAmountCents)}</td>
+				<td class="end num this-month">{centsToDollars(totals.thisMonthSpentCents)}</td>
+				<td class="end num this-month">{centsToDollars(thisMonthRemainingCents)}</td>
+				<td class="end num last-month">{centsToDollars(totals.lastMonthSpentCents)}</td>
+				<td class="end num last-month">{centsToDollars(totals.overCents)}</td>
+				<td></td>
 			</tr>
 		</tfoot>
 	{/if}
 </table>
 
 <style>
+	.stats {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		gap: var(--space-4);
+		margin-bottom: var(--space-6);
+	}
+
 	h2 {
 		margin-top: var(--space-6);
 		margin-bottom: var(--space-3);
@@ -194,6 +240,24 @@
 
 	.end {
 		text-align: right;
+	}
+
+	.center {
+		text-align: center;
+	}
+
+	.num {
+		width: 11ch;
+		min-width: 11ch;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.this-month {
+		background: var(--alpha-accent-10);
+	}
+
+	.last-month {
+		background: var(--alpha-ink-10);
 	}
 
 	.limit {
