@@ -1,9 +1,15 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
-import { createRule } from '$lib/server/repos/rules';
+import { createRule, listRules } from '$lib/server/repos/rules';
+import { listBudgetCategories } from '$lib/server/repos/budgets';
 import { categorizeUnreviewed } from '$lib/server/importCsv';
 import { isValidRegex } from '$lib/matchers/rules';
+
+export const GET: RequestHandler = async () => {
+	const conn = await getDb();
+	return json({ rules: await listRules(conn), categories: await listBudgetCategories(conn) });
+};
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json();
