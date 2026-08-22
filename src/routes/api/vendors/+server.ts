@@ -1,7 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
-import { createVendor } from '$lib/server/repos/vendors';
+import { createVendor, listVendors } from '$lib/server/repos/vendors';
+
+export const GET: RequestHandler = async () => {
+	const conn = await getDb();
+	return json(await listVendors(conn));
+};
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json();

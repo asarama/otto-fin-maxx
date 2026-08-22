@@ -2,6 +2,12 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDb } from '$lib/server/db';
 import { createBudget } from '$lib/server/repos/budgets';
+import { budgetsData } from '$lib/server/page-data';
+
+export const GET: RequestHandler = async () => {
+	const conn = await getDb();
+	return json(await budgetsData(conn));
+};
 
 export const POST: RequestHandler = async ({ request }) => {
 	const body = await request.json();
