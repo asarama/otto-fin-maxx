@@ -28,6 +28,12 @@ export default [
 			},
 		},
 	},
+	{
+		files: ['**/*.svelte.ts'],
+		languageOptions: {
+			parser: ts.parser,
+		},
+	},
 	prettier,
 	{
 		rules: {

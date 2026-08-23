@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { centsToDollars } from '$lib/money';
 	import Button from '$lib/components/Button.svelte';
+	import { toastStore } from '$lib/toasts.svelte';
 	let { data } = $props();
 
 	let account = $state(data.filters.accountId ?? '');
@@ -20,25 +21,13 @@
 		categorized: number;
 		parseErrors: string[];
 	};
-	let importStatus = $state<
-		| {
-				kind: 'ok';
-				imported: number;
-				duplicates: number;
-				categorized: number;
-				parseErrors: string[];
-		  }
-		| { kind: 'error'; message: string }
-		| null
-	>(null);
 
 	async function importCsv(file: File) {
 		if (!importAccountId) {
-			importStatus = { kind: 'error', message: 'Pick an account to import into first.' };
+			toastStore.add('error', 'Pick an account to import into first.');
 			return;
 		}
 		importing = true;
-		importStatus = null;
 		try {
 			const form = new FormData();
 			form.append('file', file);
@@ -47,20 +36,20 @@
 				body: form,
 			});
 			if (!res.ok) {
-				importStatus = { kind: 'error', message: (await res.text()).replace(/^\d+:\s*/, '') };
+				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
 				return;
 			}
 			const result = (await res.json()) as ImportResult;
-			importStatus = {
-				kind: 'ok',
-				imported: result.imported,
-				duplicates: result.duplicates,
-				categorized: result.categorized,
-				parseErrors: result.parseErrors ?? [],
-			};
+			const acct = importAccount;
+			const prefix = acct ? `${acct.name} (${acct.type}): ` : '';
+			toastStore.add(
+				'ok',
+				`${prefix}imported ${result.imported}, skipped ${result.duplicates} duplicate(s), ${result.categorized} auto-categorized`
+			);
+			for (const pe of result.parseErrors ?? []) toastStore.add('error', pe);
 			await invalidateAll();
 		} catch (err) {
-			importStatus = { kind: 'error', message: (err as Error).message };
+			toastStore.add('error', (err as Error).message);
 		} finally {
 			importing = false;
 		}
@@ -153,28 +142,6 @@
 			<span class="importing">Importing…</span>
 		{/if}
 	</div>
-	{#if importStatus?.kind === 'ok'}
-		<div class="result ok" role="status">
-			<div class="pills">
-				{#if importAccount}
-					<span class="pill pill-account">{importAccount.name}</span>
-					<span class="pill pill-type">{importAccount.type}</span>
-				{/if}
-				<span class="pill">
-					{importStatus.imported} imported
-				</span>
-				<span class="pill">
-					{importStatus.duplicates} duplicate{importStatus.duplicates === 1 ? '' : 's'} skipped
-				</span>
-				<span class="pill">{importStatus.categorized} auto-categorized</span>
-			</div>
-			{#each importStatus.parseErrors as pe, i (i)}
-				<p class="result-detail">{pe}</p>
-			{/each}
-		</div>
-	{:else if importStatus?.kind === 'error'}
-		<p class="result error" role="alert">{importStatus.message}</p>
-	{/if}
 </section>
 
 <table>
@@ -269,54 +236,6 @@
 	.importing {
 		color: var(--text-secondary);
 		font-size: var(--text-sm);
-	}
-
-	.result {
-		margin-top: var(--space-2);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
-		font-size: var(--text-sm);
-		background: var(--surface-hover);
-	}
-
-	.pills {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-2);
-	}
-
-	.pill {
-		display: inline-block;
-		padding: calc(var(--space-1) / 2) var(--space-3);
-		border-radius: var(--radius-pill);
-		font-size: var(--text-sm);
-		font-weight: 600;
-		white-space: nowrap;
-		background: var(--surface-secondary);
-		border: 1px solid var(--border-default);
-		color: var(--text-primary);
-	}
-
-	.pill-account {
-		background: var(--category-1-surface);
-		color: var(--category-1-text);
-		border-color: transparent;
-	}
-
-	.pill-type {
-		background: var(--category-4-surface);
-		color: var(--category-4-text);
-		border-color: transparent;
-		text-transform: capitalize;
-	}
-
-	.result.ok .result-detail {
-		margin: var(--space-1) 0 0;
-		color: #b00020;
-	}
-
-	.result.error {
-		color: #b00020;
 	}
 
 	table {

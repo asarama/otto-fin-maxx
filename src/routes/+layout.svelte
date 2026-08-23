@@ -2,6 +2,7 @@
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import AppShell from '$lib/components/AppShell.svelte';
+	import Toaster from '$lib/components/Toaster.svelte';
 
 	let { children, data } = $props();
 </script>
@@ -13,3 +14,4 @@
 <AppShell unreviewedCount={data.unreviewedCount}>
 	{@render children()}
 </AppShell>
+<Toaster />

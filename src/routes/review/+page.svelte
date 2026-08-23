@@ -3,6 +3,7 @@
 	import { centsToDollars } from '$lib/money';
 	import { SvelteSet } from 'svelte/reactivity';
 	import Button from '$lib/components/Button.svelte';
+	import { toastStore } from '$lib/toasts.svelte';
 	let { data } = $props();
 
 	let selected = new SvelteSet<string>();
@@ -21,27 +22,58 @@
 	async function batchAssign() {
 		if (!batchCategoryId || selected.size === 0) return;
 		const txIds = [...selected];
-		await fetch('/api/review/batch', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ txIds, budgetCategoryId: batchCategoryId }),
-		});
-		selected.clear();
-		invalidateAll();
+		const categoryName = data.categories.find((c) => c.id === batchCategoryId)?.name ?? '';
+		try {
+			const res = await fetch('/api/review/batch', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ txIds, budgetCategoryId: batchCategoryId }),
+			});
+			if (!res.ok) {
+				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
+				return;
+			}
+			selected.clear();
+			toastStore.add(
+				'ok',
+				categoryName
+					? `Assigned ${txIds.length} transaction(s) to ${categoryName}`
+					: `Assigned ${txIds.length} transaction(s)`
+			);
+			invalidateAll();
+		} catch (err) {
+			toastStore.add('error', (err as Error).message);
+		}
 	}
 
 	async function createRuleFrom(tx: { id: string; description: string; vendorId: string | null }) {
-		await fetch('/api/review/create-rule', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				name: ruleName || tx.description.slice(0, 40),
-				description: tx.description,
-				vendorId: ruleVendorId || tx.vendorId,
-				budgetCategoryId: ruleCategoryId,
-			}),
-		});
-		invalidateAll();
+		const categoryName = data.categories.find((c) => c.id === ruleCategoryId)?.name ?? '';
+		const name = ruleName || tx.description.slice(0, 40);
+		try {
+			const res = await fetch('/api/review/create-rule', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					name,
+					description: tx.description,
+					vendorId: ruleVendorId || tx.vendorId,
+					budgetCategoryId: ruleCategoryId,
+				}),
+			});
+			if (!res.ok) {
+				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
+				return;
+			}
+			ruleName = '';
+			ruleCategoryId = '';
+			toastStore.add(
+				'ok',
+				categoryName ? `Rule "${name}" added to ${categoryName}` : `Rule "${name}" added`
+			);
+			invalidateAll();
+		} catch (err) {
+			toastStore.add('error', (err as Error).message);
+		}
 	}
 </script>
 
