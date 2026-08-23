@@ -3,6 +3,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import ConfirmDelete from '$lib/components/ConfirmDelete.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
+	import { toastStore } from '$lib/toasts.svelte';
 	let { data } = $props();
 
 	let name = $state('');
@@ -28,25 +29,39 @@
 
 	async function addRule(e: SubmitEvent) {
 		e.preventDefault();
-		await fetch('/api/rules', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				name,
-				descriptionMatcher: descriptionMatcher || null,
-				amountOperator,
-				amountCents: amountCents === '' ? null : Math.round(Number(amountCents) * 100),
-				budgetCategoryId,
-				vendorIds: selectedVendors,
-			}),
-		});
-		name = '';
-		descriptionMatcher = '';
-		amountOperator = 'any';
-		amountCents = '';
-		budgetCategoryId = '';
-		selectedVendors = [];
-		invalidateAll();
+		const categoryName = data.categories.find((c) => c.id === budgetCategoryId)?.name ?? '';
+		try {
+			const res = await fetch('/api/rules', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					name,
+					descriptionMatcher: descriptionMatcher || null,
+					amountOperator,
+					amountCents: amountCents === '' ? null : Math.round(Number(amountCents) * 100),
+					budgetCategoryId,
+					vendorIds: selectedVendors,
+				}),
+			});
+			if (!res.ok) {
+				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
+				return;
+			}
+			const rule = await res.json();
+			toastStore.add(
+				'ok',
+				categoryName ? `Rule "${rule.name}" added to ${categoryName}` : `Rule "${rule.name}" added`
+			);
+			name = '';
+			descriptionMatcher = '';
+			amountOperator = 'any';
+			amountCents = '';
+			budgetCategoryId = '';
+			selectedVendors = [];
+			invalidateAll();
+		} catch (err) {
+			toastStore.add('error', (err as Error).message);
+		}
 	}
 
 	function startEdit(rule: {

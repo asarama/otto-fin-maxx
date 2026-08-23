@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import Button from '$lib/components/Button.svelte';
 	import ConfirmDelete from '$lib/components/ConfirmDelete.svelte';
+	import { toastStore } from '$lib/toasts.svelte';
 	let { data } = $props();
 
 	let name = $state('');
@@ -9,7 +10,6 @@
 	let type = $state('credit');
 	let renameFor = $state('');
 	let renameName = $state('');
-	let importStatus = $state<{ kind: 'ok' | 'error'; message: string } | null>(null);
 
 	async function addAccount(e: SubmitEvent) {
 		e.preventDefault();
@@ -23,7 +23,6 @@
 	}
 
 	async function importCsv(accountId: string, file: File) {
-		importStatus = null;
 		const form = new FormData();
 		form.append('file', file);
 		try {
@@ -32,17 +31,17 @@
 				body: form,
 			});
 			if (!res.ok) {
-				importStatus = { kind: 'error', message: (await res.text()).replace(/^\d+:\s*/, '') };
+				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
 				return;
 			}
 			const result = await res.json();
-			importStatus = {
-				kind: 'ok',
-				message: `Imported ${result.imported}, skipped ${result.duplicates} duplicate(s)`,
-			};
+			toastStore.add(
+				'ok',
+				`Imported ${result.imported}, skipped ${result.duplicates} duplicate(s)`
+			);
 			await invalidateAll();
 		} catch (err) {
-			importStatus = { kind: 'error', message: (err as Error).message };
+			toastStore.add('error', (err as Error).message);
 		}
 	}
 
@@ -86,10 +85,6 @@
 
 {#if data.accounts.length === 0}
 	<p class="empty">No accounts yet. Add your Capital One or BMO account above.</p>
-{/if}
-
-{#if importStatus}
-	<p class={`import-status ${importStatus.kind}`} role="status">{importStatus.message}</p>
 {/if}
 
 <ul class="rows">
@@ -137,22 +132,6 @@
 	.empty {
 		margin-top: var(--space-4);
 		color: var(--text-secondary);
-	}
-
-	.import-status {
-		margin-top: var(--space-3);
-		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-md);
-		font-size: var(--text-sm);
-	}
-
-	.import-status.ok {
-		background: var(--surface-hover);
-	}
-
-	.import-status.error {
-		background: var(--surface-hover);
-		color: #b00020;
 	}
 
 	.rows {
