@@ -37,6 +37,8 @@
 		totals.thisMonthAmountCents - totals.thisMonthSpentCents
 	);
 
+	const ownerNameById = $derived(new Map(data.owners.map((o) => [o.id, o.name])));
+
 	async function addBudget(e: SubmitEvent) {
 		e.preventDefault();
 		await fetch('/api/budgets', {
@@ -117,7 +119,7 @@
 	<select class="control" bind:value={categoryBudgetId}>
 		<option value="" disabled>Budget</option>
 		{#each data.budgets as budget (budget.id)}
-			<option value={budget.id}>{budget.name}</option>
+			<option value={budget.id}>{ownerNameById.get(budget.owner_id)} — {budget.name}</option>
 		{/each}
 	</select>
 	<input class="control" bind:value={categoryName} placeholder="Category name" />
