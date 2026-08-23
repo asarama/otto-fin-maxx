@@ -9,6 +9,63 @@
 	let status = $state(data.filters.status ?? '');
 	let search = $state(data.filters.search ?? '');
 
+	let importAccountId = $state('');
+	let importing = $state(false);
+
+	const importAccount = $derived(data.accounts.find((a) => a.id === importAccountId) ?? null);
+	type ImportResult = {
+		imported: number;
+		duplicates: number;
+		errors: unknown[];
+		categorized: number;
+		parseErrors: string[];
+	};
+	let importStatus = $state<
+		| {
+				kind: 'ok';
+				imported: number;
+				duplicates: number;
+				categorized: number;
+				parseErrors: string[];
+		  }
+		| { kind: 'error'; message: string }
+		| null
+	>(null);
+
+	async function importCsv(file: File) {
+		if (!importAccountId) {
+			importStatus = { kind: 'error', message: 'Pick an account to import into first.' };
+			return;
+		}
+		importing = true;
+		importStatus = null;
+		try {
+			const form = new FormData();
+			form.append('file', file);
+			const res = await fetch(`/api/accounts/${importAccountId}/import`, {
+				method: 'POST',
+				body: form,
+			});
+			if (!res.ok) {
+				importStatus = { kind: 'error', message: (await res.text()).replace(/^\d+:\s*/, '') };
+				return;
+			}
+			const result = (await res.json()) as ImportResult;
+			importStatus = {
+				kind: 'ok',
+				imported: result.imported,
+				duplicates: result.duplicates,
+				categorized: result.categorized,
+				parseErrors: result.parseErrors ?? [],
+			};
+			await invalidateAll();
+		} catch (err) {
+			importStatus = { kind: 'error', message: (err as Error).message };
+		} finally {
+			importing = false;
+		}
+	}
+
 	const totals = $derived(
 		data.transactions.reduce(
 			(acc, tx) => ({
@@ -65,6 +122,60 @@
 	</select>
 	<Button type="submit" variant="primary">Filter</Button>
 </form>
+
+<section class="import-panel">
+	<h2>Import CSV</h2>
+	<div class="form-row">
+		<select class="control" bind:value={importAccountId} aria-label="Account to import into">
+			<option value="" disabled>Choose account…</option>
+			{#each data.accounts as a (a.id)}
+				<option value={a.id}
+					>{a.name}, {a.bank === 'capital_one' ? 'Capital One' : 'BMO'}, {a.type === 'credit'
+						? 'Credit'
+						: 'Debit'}</option
+				>
+			{/each}
+		</select>
+		<input
+			class="control file"
+			type="file"
+			accept=".csv"
+			disabled={importing || !data.accounts.length}
+			aria-label="CSV file to import"
+			onchange={(e) => {
+				const input = e.currentTarget as HTMLInputElement;
+				const file = input.files?.[0];
+				if (file) importCsv(file);
+				input.value = '';
+			}}
+		/>
+		{#if importing}
+			<span class="importing">Importing…</span>
+		{/if}
+	</div>
+	{#if importStatus?.kind === 'ok'}
+		<div class="result ok" role="status">
+			<div class="pills">
+				{#if importAccount}
+					<span class="pill pill-account">{importAccount.name}</span>
+					<span class="pill pill-type">{importAccount.type}</span>
+				{/if}
+				<span class="pill">
+					{importStatus.imported} imported
+				</span>
+				<span class="pill">
+					{importStatus.duplicates} duplicate{importStatus.duplicates === 1 ? '' : 's'} skipped
+				</span>
+				<span class="pill">{importStatus.categorized} auto-categorized</span>
+			</div>
+			{#each importStatus.parseErrors as pe, i (i)}
+				<p class="result-detail">{pe}</p>
+			{/each}
+		</div>
+	{:else if importStatus?.kind === 'error'}
+		<p class="result error" role="alert">{importStatus.message}</p>
+	{/if}
+</section>
 
 <table>
 	<thead>
@@ -132,6 +243,80 @@
 		align-items: center;
 		gap: var(--space-2);
 		margin-bottom: var(--space-5);
+	}
+
+	.import-panel {
+		margin-bottom: var(--space-5);
+		padding: var(--space-3) var(--space-4);
+		border: 1px solid var(--border-default);
+		border-radius: var(--radius-md);
+	}
+
+	.import-panel h2 {
+		font-size: var(--text-md);
+		margin: 0 0 var(--space-2);
+	}
+
+	.import-panel .form-row {
+		margin-bottom: 0;
+	}
+
+	.file {
+		max-width: 260px;
+		font-size: var(--text-sm);
+	}
+
+	.importing {
+		color: var(--text-secondary);
+		font-size: var(--text-sm);
+	}
+
+	.result {
+		margin-top: var(--space-2);
+		padding: var(--space-2) var(--space-3);
+		border-radius: var(--radius-md);
+		font-size: var(--text-sm);
+		background: var(--surface-hover);
+	}
+
+	.pills {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+	}
+
+	.pill {
+		display: inline-block;
+		padding: calc(var(--space-1) / 2) var(--space-3);
+		border-radius: var(--radius-pill);
+		font-size: var(--text-sm);
+		font-weight: 600;
+		white-space: nowrap;
+		background: var(--surface-secondary);
+		border: 1px solid var(--border-default);
+		color: var(--text-primary);
+	}
+
+	.pill-account {
+		background: var(--category-1-surface);
+		color: var(--category-1-text);
+		border-color: transparent;
+	}
+
+	.pill-type {
+		background: var(--category-4-surface);
+		color: var(--category-4-text);
+		border-color: transparent;
+		text-transform: capitalize;
+	}
+
+	.result.ok .result-detail {
+		margin: var(--space-1) 0 0;
+		color: #b00020;
+	}
+
+	.result.error {
+		color: #b00020;
 	}
 
 	table {
