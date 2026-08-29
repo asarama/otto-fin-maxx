@@ -3,15 +3,9 @@
 	import Button from '$lib/components/Button.svelte';
 	import ConfirmDelete from '$lib/components/ConfirmDelete.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
+	import RuleForm, { type RuleDraft } from '$lib/components/RuleForm.svelte';
 	import { toastStore } from '$lib/toasts.svelte';
 	let { data } = $props();
-
-	let name = $state('');
-	let descriptionMatcher = $state('');
-	let amountOperator = $state('any');
-	let amountCents = $state('');
-	let budgetCategoryId = $state('');
-	let selectedVendors = $state<string[]>([]);
 
 	let editRuleId = $state('');
 	let editName = $state('');
@@ -27,40 +21,38 @@
 	let testAmount = $state('');
 	let testResult = $state<string | null>(null);
 
-	async function addRule(e: SubmitEvent) {
-		e.preventDefault();
-		const categoryName = data.categories.find((c) => c.id === budgetCategoryId)?.name ?? '';
+	const categoryOptions = $derived(data.categories.map((c) => ({ id: c.id, label: c.name })));
+
+	async function addRule(draft: RuleDraft) {
+		const categoryName = data.categories.find((c) => c.id === draft.budgetCategoryId)?.name ?? '';
 		try {
 			const res = await fetch('/api/rules', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
-					name,
-					descriptionMatcher: descriptionMatcher || null,
-					amountOperator,
-					amountCents: amountCents === '' ? null : Math.round(Number(amountCents) * 100),
-					budgetCategoryId,
-					vendorIds: selectedVendors,
+					name: draft.name,
+					descriptionMatcher: draft.descriptionMatcher || null,
+					amountOperator: draft.amountOperator,
+					amountCents:
+						draft.amountCents === '' ? null : Math.round(Number(draft.amountCents) * 100),
+					budgetCategoryId: draft.budgetCategoryId,
+					vendorIds: draft.vendorIds,
 				}),
 			});
 			if (!res.ok) {
 				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
-				return;
+				return false;
 			}
 			const rule = await res.json();
 			toastStore.add(
 				'ok',
 				categoryName ? `Rule "${rule.name}" added to ${categoryName}` : `Rule "${rule.name}" added`
 			);
-			name = '';
-			descriptionMatcher = '';
-			amountOperator = 'any';
-			amountCents = '';
-			budgetCategoryId = '';
-			selectedVendors = [];
 			invalidateAll();
+			return true;
 		} catch (err) {
 			toastStore.add('error', (err as Error).message);
+			return false;
 		}
 	}
 
@@ -82,22 +74,32 @@
 		editVendorIds = [...rule.vendorIds];
 	}
 
-	async function saveEdit(e: SubmitEvent) {
-		e.preventDefault();
-		await fetch(`/api/rules/${editRuleId}`, {
-			method: 'PATCH',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				name: editName,
-				descriptionMatcher: editDescriptionMatcher || null,
-				amountOperator: editAmountOperator,
-				amountCents: editAmountCents === '' ? null : Math.round(Number(editAmountCents) * 100),
-				budgetCategoryId: editBudgetCategoryId,
-				vendorIds: editVendorIds,
-			}),
-		});
-		editRuleId = '';
-		invalidateAll();
+	async function saveEdit(draft: RuleDraft) {
+		try {
+			const res = await fetch(`/api/rules/${editRuleId}`, {
+				method: 'PATCH',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					name: draft.name,
+					descriptionMatcher: draft.descriptionMatcher || null,
+					amountOperator: draft.amountOperator,
+					amountCents:
+						draft.amountCents === '' ? null : Math.round(Number(draft.amountCents) * 100),
+					budgetCategoryId: draft.budgetCategoryId,
+					vendorIds: draft.vendorIds,
+				}),
+			});
+			if (!res.ok) {
+				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
+				return false;
+			}
+			editRuleId = '';
+			invalidateAll();
+			return true;
+		} catch (err) {
+			toastStore.add('error', (err as Error).message);
+			return false;
+		}
 	}
 
 	async function toggle(ruleId: string, enabled: boolean) {
@@ -140,81 +142,33 @@
 
 <h1>Rules</h1>
 
-<form class="form-row" onsubmit={addRule}>
-	<input class="control" bind:value={name} placeholder="Rule name" />
-	<input
-		class="control mono"
-		bind:value={descriptionMatcher}
-		placeholder="Description regex (optional)"
-	/>
-	<select class="control" bind:value={amountOperator}>
-		<option value="any">any amount</option>
-		<option value="eq">=</option>
-		<option value="lt">&lt;</option>
-		<option value="lte">&le;</option>
-		<option value="gt">&gt;</option>
-		<option value="gte">&ge;</option>
-	</select>
-	<input
-		class="control numeric"
-		bind:value={amountCents}
-		placeholder="Amount ($)"
-		type="number"
-		step="0.01"
-	/>
-	<select class="control" bind:value={budgetCategoryId} required>
-		<option value="" disabled>Target category</option>
-		{#each data.categories as cat (cat.id)}
-			<option value={cat.id}>{cat.name}</option>
-		{/each}
-	</select>
-	<select class="control multi" bind:value={selectedVendors} multiple aria-label="Vendors">
-		{#each data.vendors as v (v.id)}
-			<option value={v.id}>{v.name}</option>
-		{/each}
-	</select>
-	<Button type="submit" variant="primary">Add rule</Button>
-</form>
+<RuleForm
+	categories={categoryOptions}
+	vendors={data.vendors}
+	submitLabel="Add rule"
+	onsubmit={addRule}
+/>
 
 {#if editRuleId}
-	<form class="edit" onsubmit={saveEdit}>
+	<div class="edit">
 		<h2>Editing {editName}</h2>
-		<div class="form-row">
-			<input class="control" bind:value={editName} placeholder="Rule name" />
-			<input
-				class="control mono"
-				bind:value={editDescriptionMatcher}
-				placeholder="Description regex (optional)"
-			/>
-			<select class="control" bind:value={editAmountOperator}>
-				<option value="any">any amount</option>
-				<option value="eq">=</option>
-				<option value="lt">&lt;</option>
-				<option value="lte">&le;</option>
-				<option value="gt">&gt;</option>
-				<option value="gte">&ge;</option>
-			</select>
-			<input
-				class="control numeric"
-				bind:value={editAmountCents}
-				placeholder="Amount ($)"
-				type="number"
-				step="0.01"
-			/>
-			<select class="control" bind:value={editBudgetCategoryId} aria-label="Target category">
-				{#each data.categories as cat (cat.id)}
-					<option value={cat.id}>{cat.name}</option>
-				{/each}
-			</select>
-			<select class="control multi" bind:value={editVendorIds} multiple aria-label="Vendors">
-				{#each data.vendors as v (v.id)}
-					<option value={v.id}>{v.name}</option>
-				{/each}
-			</select>
-			<Button type="submit" variant="primary">Save</Button>
-			<Button variant="ghost" onclick={() => (editRuleId = '')}>Cancel</Button>
-		</div>
-	</form>
+		<RuleForm
+			initial={{
+				name: editName,
+				descriptionMatcher: editDescriptionMatcher,
+				amountOperator: editAmountOperator,
+				amountCents: editAmountCents,
+				budgetCategoryId: editBudgetCategoryId,
+				vendorIds: editVendorIds,
+			}}
+			categories={categoryOptions}
+			vendors={data.vendors}
+			submitLabel="Save"
+			onsubmit={saveEdit}
+			showCancel
+			oncancel={() => (editRuleId = '')}
+		/>
+	</div>
 {/if}
 
 <ul class="rows">
@@ -299,16 +253,6 @@
 		padding: var(--space-4);
 		border-radius: var(--radius-xl);
 		background: var(--surface-primary);
-	}
-
-	.multi {
-		min-width: 14ch;
-		max-height: 96px;
-	}
-
-	.mono {
-		font-family: var(--font-mono);
-		font-size: var(--text-sm);
 	}
 
 	.rows {

@@ -3,16 +3,21 @@
 	import { centsToDollars } from '$lib/money';
 	import { SvelteSet } from 'svelte/reactivity';
 	import Button from '$lib/components/Button.svelte';
+	import RuleForm, { type RuleDraft } from '$lib/components/RuleForm.svelte';
 	import { toastStore } from '$lib/toasts.svelte';
 	let { data } = $props();
 
 	let selected = new SvelteSet<string>();
 	let batchCategoryId = $state('');
-	let ruleCategoryId = $state('');
-	let ruleVendorId = $state('');
-	let ruleName = $state('');
 
 	const totalCents = $derived(data.transactions.reduce((sum, tx) => sum + tx.amountCents, 0));
+
+	const categoryOptions = $derived(
+		data.categories.map((c) => ({
+			id: c.id,
+			label: `${c.ownerName} / ${c.budgetName} / ${c.name}`,
+		}))
+	);
 
 	function escapeRegex(s: string): string {
 		return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -65,33 +70,40 @@
 		}
 	}
 
-	async function createRuleFrom(tx: { id: string; description: string; vendorId: string | null }) {
-		const categoryName = data.categories.find((c) => c.id === ruleCategoryId)?.name ?? '';
-		const name = ruleName || tx.description.slice(0, 40);
+	async function createRuleFrom(
+		tx: { id: string; description: string; vendorId: string | null },
+		draft: RuleDraft
+	) {
+		const categoryName = data.categories.find((c) => c.id === draft.budgetCategoryId)?.name ?? '';
+		const name = draft.name || tx.description.slice(0, 40);
 		try {
 			const res = await fetch('/api/review/create-rule', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
 					name,
+					descriptionMatcher: draft.descriptionMatcher || undefined,
 					description: tx.description,
-					vendorId: ruleVendorId || tx.vendorId,
-					budgetCategoryId: ruleCategoryId,
+					amountOperator: draft.amountOperator,
+					amountCents:
+						draft.amountCents === '' ? null : Math.round(Number(draft.amountCents) * 100),
+					vendorIds: draft.vendorIds,
+					budgetCategoryId: draft.budgetCategoryId,
 				}),
 			});
 			if (!res.ok) {
 				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
-				return;
+				return false;
 			}
-			ruleName = '';
-			ruleCategoryId = '';
 			toastStore.add(
 				'ok',
 				categoryName ? `Rule "${name}" added to ${categoryName}` : `Rule "${name}" added`
 			);
 			invalidateAll();
+			return true;
 		} catch (err) {
 			toastStore.add('error', (err as Error).message);
+			return false;
 		}
 	}
 </script>
@@ -116,9 +128,7 @@
 	<select class="control" bind:value={batchCategoryId}>
 		<option value="" disabled>Assign selected to category</option>
 		{#each data.categories as cat (cat.id)}
-			<option value={cat.id}
-				>{cat.ownerName} / {cat.budgetName} / {cat.name}</option
-			>
+			<option value={cat.id}>{cat.ownerName} / {cat.budgetName} / {cat.name}</option>
 		{/each}
 	</select>
 	<Button type="submit" variant="primary" disabled={selected.size === 0}>
@@ -141,30 +151,20 @@
 				</span>
 			</label>
 
-<details>
-					<summary>Create rule</summary>
-					<div class="form-row">
-						<input class="control" bind:value={ruleName} placeholder="Rule name" />
-						<select class="control" bind:value={ruleVendorId}>
-							<option value="">No vendor</option>
-							{#each data.vendors as v (v.id)}
-								<option value={v.id}>{v.name}</option>
-							{/each}
-						</select>
-						<select class="control" bind:value={ruleCategoryId}>
-							<option value="" disabled>Category</option>
-							{#each data.categories as cat (cat.id)}
-								<option value={cat.id}
-									>{cat.ownerName} / {cat.budgetName} / {cat.name}</option
-								>
-							{/each}
-						</select>
-						<Button variant="secondary" size="sm" onclick={() => createRuleFrom(tx)}>
-							Create rule
-						</Button>
-					</div>
-					<p class="regex">Description regex: <code>{escapeRegex(tx.description)}</code></p>
-				</details>
+			<details>
+				<summary>Create rule</summary>
+				<RuleForm
+					initial={{
+						name: tx.description.slice(0, 40),
+						descriptionMatcher: escapeRegex(tx.description),
+						vendorIds: tx.vendorId ? [tx.vendorId] : [],
+					}}
+					categories={categoryOptions}
+					vendors={data.vendors}
+					submitLabel="Create rule"
+					onsubmit={(draft) => createRuleFrom(tx, draft)}
+				/>
+			</details>
 		</li>
 	{/each}
 </ul>
@@ -235,15 +235,5 @@
 
 	details[open] summary {
 		margin-bottom: var(--space-2);
-	}
-
-	.regex {
-		margin-top: var(--space-2);
-		font-size: var(--text-sm);
-		color: var(--text-secondary);
-	}
-
-	.regex code {
-		color: var(--text-primary);
 	}
 </style>
