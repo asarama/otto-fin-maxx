@@ -22,5 +22,5 @@ const parsed = parseBankCsv(account.bank, csvText);
 for (const err of parsed.errors) console.error(`SKIPPED ${err}`);
 const result = await importTransactions(conn, account.id, parsed.rows);
 console.log(
-	`Imported ${result.imported}, duplicates ${result.duplicates}, categorized ${result.categorized}, parse errors ${parsed.errors.length}`
+	`Imported ${result.imported}, duplicates ${result.duplicates}, categorized ${result.categorized}, re-linked ${result.vendorUpdates}, parse errors ${parsed.errors.length}`
 );

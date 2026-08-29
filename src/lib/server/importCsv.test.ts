@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createTestDb } from './test-helpers';
 import { createAccount } from './repos/accounts';
-import { createVendor } from './repos/vendors';
+import { createVendor, listVendors } from './repos/vendors';
 import { listOwners, createBudget, createBudgetCategory } from './repos/budgets';
 import { listTransactions, countUnreviewed } from './repos/transactions';
 import { listRules } from './repos/rules';
@@ -44,6 +44,82 @@ describe('importTransactions', () => {
 		const txs = await listTransactions(conn, {});
 		expect(txs).toHaveLength(2);
 		expect(txs.find((t) => t.description === 'AMZN MKTP US')?.vendorId).not.toBeNull();
+	});
+
+	it('auto-creates vendors for unmatched raw names', async () => {
+		const conn = await createTestDb();
+		const account = await createAccount(conn, {
+			name: 'CapOne',
+			bank: 'capital_one',
+			type: 'credit',
+		});
+		const result = await importTransactions(conn, account.id, [
+			{
+				postedDate: '2026-07-01',
+				description: 'TRADER JOE S #078',
+				rawVendorName: 'TRADER JOE S #078',
+				amountCents: -1234,
+			},
+		]);
+		expect(result.imported).toBe(1);
+		expect(result.vendorUpdates).toBe(0);
+		const txs = await listTransactions(conn, {});
+		expect(txs[0].vendorId).not.toBeNull();
+		const vendors = await listVendors(conn);
+		expect(vendors).toHaveLength(1);
+		expect(vendors[0].name).toBe('Trader Joe S');
+		expect(vendors[0].aliases.map((a) => a.name)).toEqual(['TRADER JOE S #078']);
+	});
+
+	it('re-evaluates vendor_id on duplicate rows and counts vendorUpdates', async () => {
+		const conn = await createTestDb();
+		const account = await createAccount(conn, {
+			name: 'CapOne',
+			bank: 'capital_one',
+			type: 'credit',
+		});
+		const rows: ParsedRow[] = [
+			{
+				postedDate: '2026-07-01',
+				description: 'TRADER JOE S #078',
+				rawVendorName: 'TRADER JOE S #078',
+				amountCents: -1234,
+			},
+		];
+		await importTransactions(conn, account.id, rows);
+		await conn.run('UPDATE account_transactions SET vendor_id = NULL');
+		const result = await importTransactions(conn, account.id, rows);
+		expect(result.imported).toBe(0);
+		expect(result.duplicates).toBe(1);
+		expect(result.vendorUpdates).toBe(1);
+		const txs = await listTransactions(conn, {});
+		expect(txs[0].vendorId).not.toBeNull();
+	});
+
+	it('absorbs variants into an existing vendor by cleaned name alias', async () => {
+		const conn = await createTestDb();
+		const account = await createAccount(conn, {
+			name: 'CapOne',
+			bank: 'capital_one',
+			type: 'credit',
+		});
+		const amazon = await createVendor(conn, 'Amazon', ['AMAZON MKTPL']);
+		await importTransactions(conn, account.id, [
+			{
+				postedDate: '2026-07-02',
+				description: 'AMAZON MKTPL*567RG60C1',
+				rawVendorName: 'AMAZON MKTPL*567RG60C1',
+				amountCents: -4567,
+			},
+		]);
+		const txs = await listTransactions(conn, {});
+		expect(txs[0].vendorId).toBe(amazon.id);
+		const vendors = await listVendors(conn);
+		expect(vendors).toHaveLength(1);
+		expect(vendors[0].aliases.map((a) => a.name)).toEqual([
+			'AMAZON MKTPL',
+			'AMAZON MKTPL*567RG60C1',
+		]);
 	});
 });
 

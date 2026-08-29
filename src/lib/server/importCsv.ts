@@ -2,9 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { DuckDBConnection } from '@duckdb/node-api';
 import { externalId } from '$lib/externalId';
 import type { ParsedRow } from '$lib/parsers';
-import { resolveVendor } from '$lib/matchers/vendors';
 import { firstMatchingRule } from '$lib/matchers/rules';
-import { listVendors } from './repos/vendors';
+import { listVendors, resolveOrCreateVendor } from './repos/vendors';
 import { listRules } from './repos/rules';
 import { ensureBudgetCategoryMonth } from './repos/budgets';
 
@@ -13,6 +12,7 @@ export interface ImportResult {
 	duplicates: number;
 	errors: string[];
 	categorized: number;
+	vendorUpdates: number;
 }
 
 export async function importTransactions(
@@ -20,12 +20,14 @@ export async function importTransactions(
 	accountId: string,
 	rows: ParsedRow[]
 ): Promise<ImportResult> {
-	const result: ImportResult = { imported: 0, duplicates: 0, errors: [], categorized: 0 };
-	const vendors = (await listVendors(conn)).map((v) => ({
-		id: v.id,
-		name: v.name,
-		aliases: v.aliases.map((a) => a.name),
-	}));
+	const result: ImportResult = {
+		imported: 0,
+		duplicates: 0,
+		errors: [],
+		categorized: 0,
+		vendorUpdates: 0,
+	};
+	const vendors = await listVendors(conn);
 
 	for (const row of rows) {
 		const id = externalId(
@@ -36,15 +38,31 @@ export async function importTransactions(
 			row.amountCents
 		);
 		const exists = await conn.runAndReadAll(
-			'SELECT id FROM account_transactions WHERE external_id = ?',
+			'SELECT id, vendor_id FROM account_transactions WHERE external_id = ?',
 			[id]
 		);
 		if (exists.getRowObjects().length > 0) {
 			result.duplicates++;
+			try {
+				const existing = exists.getRowObjects()[0];
+				const resolved = await resolveOrCreateVendor(conn, row.rawVendorName, vendors);
+				const current = existing.vendor_id === null ? null : String(existing.vendor_id);
+				if (resolved !== current) {
+					await conn.run('UPDATE account_transactions SET vendor_id = ? WHERE id = ?', [
+						resolved,
+						String(existing.id),
+					]);
+					result.vendorUpdates++;
+				}
+			} catch (err) {
+				result.errors.push(
+					`Duplicate "${row.description}" (${row.postedDate}): ${(err as Error).message}`
+				);
+			}
 			continue;
 		}
 		try {
-			const vendorId = resolveVendor(row.rawVendorName, vendors);
+			const vendorId = await resolveOrCreateVendor(conn, row.rawVendorName, vendors);
 			await conn.run(
 				`INSERT INTO account_transactions
          (id, account_id, external_id, posted_date, description, raw_vendor_name, amount_cents, vendor_id, assignment_status, created_at)
