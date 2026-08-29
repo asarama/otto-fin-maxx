@@ -18,3 +18,13 @@ export function resolveVendor(rawName: string, vendors: VendorSpec[]): string | 
 	}
 	return null;
 }
+
+export function cleanMerchantName(raw: string): string {
+	let s = raw.trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
+	s = s.replace(/\s*#\d+$/, '');
+	const starIdx = s.lastIndexOf('*');
+	if (starIdx >= 0 && /\d/.test(s.slice(starIdx + 1))) {
+		s = s.slice(0, starIdx).trimEnd();
+	}
+	return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
