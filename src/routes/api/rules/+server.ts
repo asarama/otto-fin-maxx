@@ -17,6 +17,9 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (descriptionMatcher && !isValidRegex(descriptionMatcher)) {
 		throw error(400, `Invalid regex: ${descriptionMatcher}`);
 	}
+	if (!String(body.budgetCategoryId)) {
+		throw error(400, 'Target category is required');
+	}
 	const conn = await getDb();
 	const rule = await createRule(conn, {
 		name: String(body.name),

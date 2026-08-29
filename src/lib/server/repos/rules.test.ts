@@ -43,6 +43,13 @@ describe('rules repo', () => {
 		expect(await listRules(conn)).toHaveLength(0);
 	});
 
+	it('rejects creating a rule without a budget category', async () => {
+		const conn = await createTestDb();
+		await expect(createRule(conn, { name: 'No category', budgetCategoryId: '' })).rejects.toThrow(
+			/budget category/i
+		);
+	});
+
 	it('moves a rule up or down by swapping priorities', async () => {
 		const conn = await createTestDb();
 		const cat = await makeCategory(conn);

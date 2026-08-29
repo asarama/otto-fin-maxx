@@ -56,6 +56,9 @@ export async function listRules(conn: DuckDBConnection): Promise<Rule[]> {
 }
 
 export async function createRule(conn: DuckDBConnection, input: CreateRuleInput): Promise<Rule> {
+	if (!input.budgetCategoryId) {
+		throw new Error('Budget category is required');
+	}
 	const id = randomUUID();
 	const priority = input.priority ?? (await nextPriority(conn));
 	await conn.run(

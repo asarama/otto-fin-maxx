@@ -162,7 +162,7 @@
 		type="number"
 		step="0.01"
 	/>
-	<select class="control" bind:value={budgetCategoryId}>
+	<select class="control" bind:value={budgetCategoryId} required>
 		<option value="" disabled>Target category</option>
 		{#each data.categories as cat (cat.id)}
 			<option value={cat.id}>{cat.name}</option>
