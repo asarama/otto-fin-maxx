@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { centsToDollars } from '$lib/money';
 	import Button from '$lib/components/Button.svelte';
+	import Field from '$lib/components/Field.svelte';
 	import { toastStore } from '$lib/toasts.svelte';
 	let { data } = $props();
 
@@ -95,49 +96,61 @@
 		applyFilters();
 	}}
 >
-	<input class="control" bind:value={search} placeholder="Search description" />
-	<input class="control" type="month" bind:value={month} />
-	<select class="control" bind:value={account}>
-		<option value="">All accounts</option>
-		{#each data.accounts as a (a.id)}
-			<option value={a.id}>{a.name}</option>
-		{/each}
-	</select>
-	<select class="control" bind:value={status}>
-		<option value="">All statuses</option>
-		<option value="unreviewed">unreviewed</option>
-		<option value="auto">auto</option>
-		<option value="manual">manual</option>
-	</select>
+	<Field label="Search">
+		<input class="control" bind:value={search} placeholder="Search description" />
+	</Field>
+	<Field label="Month">
+		<input class="control" type="month" bind:value={month} />
+	</Field>
+	<Field label="Account">
+		<select class="control" bind:value={account}>
+			<option value="">All accounts</option>
+			{#each data.accounts as a (a.id)}
+				<option value={a.id}>{a.name}</option>
+			{/each}
+		</select>
+	</Field>
+	<Field label="Status">
+		<select class="control" bind:value={status}>
+			<option value="">All statuses</option>
+			<option value="unreviewed">unreviewed</option>
+			<option value="auto">auto</option>
+			<option value="manual">manual</option>
+		</select>
+	</Field>
 	<Button type="submit" variant="primary">Filter</Button>
 </form>
 
 <section class="import-panel">
 	<h2>Import CSV</h2>
 	<div class="form-row">
-		<select class="control" bind:value={importAccountId} aria-label="Account to import into">
-			<option value="" disabled>Choose account…</option>
-			{#each data.accounts as a (a.id)}
-				<option value={a.id}
-					>{a.name}, {a.bank === 'capital_one' ? 'Capital One' : 'BMO'}, {a.type === 'credit'
-						? 'Credit'
-						: 'Debit'}</option
-				>
-			{/each}
-		</select>
-		<input
-			class="control file"
-			type="file"
-			accept=".csv"
-			disabled={importing || !data.accounts.length}
-			aria-label="CSV file to import"
-			onchange={(e) => {
-				const input = e.currentTarget as HTMLInputElement;
-				const file = input.files?.[0];
-				if (file) importCsv(file);
-				input.value = '';
-			}}
-		/>
+		<Field label="Account">
+			<select class="control" bind:value={importAccountId}>
+				<option value="" disabled>Choose account…</option>
+				{#each data.accounts as a (a.id)}
+					<option value={a.id}
+						>{a.name}, {a.bank === 'capital_one' ? 'Capital One' : 'BMO'}, {a.type === 'credit'
+							? 'Credit'
+							: 'Debit'}</option
+					>
+				{/each}
+			</select>
+		</Field>
+		<Field label="CSV file">
+			<input
+				class="control file"
+				type="file"
+				accept=".csv"
+				disabled={importing || !data.accounts.length}
+				aria-label="CSV file to import"
+				onchange={(e) => {
+					const input = e.currentTarget as HTMLInputElement;
+					const file = input.files?.[0];
+					if (file) importCsv(file);
+					input.value = '';
+				}}
+			/>
+		</Field>
 		{#if importing}
 			<span class="importing">Importing…</span>
 		{/if}
@@ -207,9 +220,8 @@
 	.form-row {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
+		align-items: flex-end;
 		gap: var(--space-2);
-		margin-bottom: var(--space-5);
 	}
 
 	.import-panel {

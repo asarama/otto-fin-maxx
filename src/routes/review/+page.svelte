@@ -3,6 +3,7 @@
 	import { centsToDollars } from '$lib/money';
 	import { SvelteSet } from 'svelte/reactivity';
 	import Button from '$lib/components/Button.svelte';
+	import Field from '$lib/components/Field.svelte';
 	import RuleForm, { type RuleDraft } from '$lib/components/RuleForm.svelte';
 	import { toastStore } from '$lib/toasts.svelte';
 	let { data } = $props();
@@ -125,18 +126,19 @@
 		batchAssign();
 	}}
 >
-	<select class="control" bind:value={batchCategoryId}>
-		<option value="" disabled>Assign selected to category</option>
-		{#each data.categories as cat (cat.id)}
-			<option value={cat.id}>{cat.ownerName} / {cat.budgetName} / {cat.name}</option>
-		{/each}
-	</select>
+	<Field label="Category">
+		<select class="control" bind:value={batchCategoryId}>
+			<option value="" disabled>Assign selected to category</option>
+			{#each data.categories as cat (cat.id)}
+				<option value={cat.id}>{cat.ownerName} / {cat.budgetName} / {cat.name}</option>
+			{/each}
+		</select>
+	</Field>
 	<Button type="submit" variant="primary" disabled={selected.size === 0}>
 		Assign {selected.size} selected
 	</Button>
+	<Button variant="secondary" onclick={runRules}>Run rules</Button>
 </form>
-
-<Button variant="secondary" onclick={runRules}>Run rules</Button>
 
 <ul class="rows">
 	{#each data.transactions as tx (tx.id)}
@@ -173,7 +175,7 @@
 	.form-row {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
+		align-items: flex-end;
 		gap: var(--space-2);
 	}
 

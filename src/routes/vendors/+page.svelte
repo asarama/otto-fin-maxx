@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import Button from '$lib/components/Button.svelte';
 	import ConfirmDelete from '$lib/components/ConfirmDelete.svelte';
+	import Field from '$lib/components/Field.svelte';
 	let { data } = $props();
 
 	let name = $state('');
@@ -63,8 +64,12 @@
 <h1>Vendors</h1>
 
 <form class="form-row" onsubmit={addVendor}>
-	<input class="control" bind:value={name} placeholder="Vendor name" />
-	<input class="control" bind:value={aliases} placeholder="Aliases, comma separated" />
+	<Field label="Vendor name">
+		<input class="control" bind:value={name} placeholder="Vendor name" />
+	</Field>
+	<Field label="Aliases">
+		<input class="control" bind:value={aliases} placeholder="Aliases, comma separated" />
+	</Field>
 	<Button type="submit" variant="primary">Add vendor</Button>
 </form>
 
@@ -76,18 +81,22 @@
 		merge();
 	}}
 >
-	<select class="control" bind:value={keepId}>
-		<option value="" disabled>Keep</option>
-		{#each data.vendors as v (v.id)}
-			<option value={v.id}>{v.name}</option>
-		{/each}
-	</select>
-	<select class="control" bind:value={removeId}>
-		<option value="" disabled>Merge into keep</option>
-		{#each data.vendors as v (v.id)}
-			<option value={v.id}>{v.name}</option>
-		{/each}
-	</select>
+	<Field label="Keep">
+		<select class="control" bind:value={keepId}>
+			<option value="" disabled>Keep</option>
+			{#each data.vendors as v (v.id)}
+				<option value={v.id}>{v.name}</option>
+			{/each}
+		</select>
+	</Field>
+	<Field label="Merge into keep">
+		<select class="control" bind:value={removeId}>
+			<option value="" disabled>Merge into keep</option>
+			{#each data.vendors as v (v.id)}
+				<option value={v.id}>{v.name}</option>
+			{/each}
+		</select>
+	</Field>
 	<Button type="submit" variant="secondary" disabled={!keepId || !removeId || keepId === removeId}>
 		Merge
 	</Button>
@@ -128,12 +137,14 @@
 					addAlias(vendor.id);
 				}}
 			>
-				<input
-					class="control"
-					bind:value={aliasDrafts[vendor.id]}
-					placeholder="New alias"
-					aria-label="New alias for {vendor.name}"
-				/>
+				<Field label="New alias">
+					<input
+						class="control"
+						bind:value={aliasDrafts[vendor.id]}
+						placeholder="New alias"
+						aria-label="New alias for {vendor.name}"
+					/>
+				</Field>
 				<Button type="submit" variant="secondary" size="sm">Add alias</Button>
 			</form>
 		</li>
@@ -150,7 +161,7 @@
 	.form-row {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
+		align-items: flex-end;
 		gap: var(--space-2);
 	}
 

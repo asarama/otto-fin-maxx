@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import Button from '$lib/components/Button.svelte';
 	import ConfirmDelete from '$lib/components/ConfirmDelete.svelte';
+	import Field from '$lib/components/Field.svelte';
 	import IconButton from '$lib/components/IconButton.svelte';
 	import RuleForm, { type RuleDraft } from '$lib/components/RuleForm.svelte';
 	import { toastStore } from '$lib/toasts.svelte';
@@ -202,20 +203,26 @@
 			<details>
 				<summary>Test</summary>
 				<div class="form-row">
-					<input class="control" bind:value={testDescription} placeholder="Description" />
-					<select class="control" bind:value={testVendorId} aria-label="Test vendor">
-						<option value="">no vendor</option>
-						{#each data.vendors as v (v.id)}
-							<option value={v.id}>{v.name}</option>
-						{/each}
-					</select>
-					<input
-						class="control numeric"
-						bind:value={testAmount}
-						placeholder="Amount ($)"
-						type="number"
-						step="0.01"
-					/>
+					<Field label="Description">
+						<input class="control" bind:value={testDescription} placeholder="Description" />
+					</Field>
+					<Field label="Vendor">
+						<select class="control" bind:value={testVendorId} aria-label="Test vendor">
+							<option value="">no vendor</option>
+							{#each data.vendors as v (v.id)}
+								<option value={v.id}>{v.name}</option>
+							{/each}
+						</select>
+					</Field>
+					<Field label="Amount">
+						<input
+							class="control numeric"
+							bind:value={testAmount}
+							placeholder="Amount ($)"
+							type="number"
+							step="0.01"
+						/>
+					</Field>
 					<Button
 						variant="secondary"
 						size="sm"
@@ -244,7 +251,7 @@
 	.form-row {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
+		align-items: flex-end;
 		gap: var(--space-2);
 	}
 

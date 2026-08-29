@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import Button from '$lib/components/Button.svelte';
 	import ConfirmDelete from '$lib/components/ConfirmDelete.svelte';
+	import Field from '$lib/components/Field.svelte';
 	import { toastStore } from '$lib/toasts.svelte';
 	let { data } = $props();
 
@@ -70,15 +71,21 @@
 <h1>Accounts</h1>
 
 <form class="form-row" onsubmit={addAccount}>
-	<input class="control" bind:value={name} placeholder="Name (e.g. Capital One Quicksilver)" />
-	<select class="control" bind:value={bank}>
-		<option value="capital_one">Capital One</option>
-		<option value="bmo">BMO</option>
-	</select>
-	<select class="control" bind:value={type}>
-		<option value="credit">Credit</option>
-		<option value="debit">Debit</option>
-	</select>
+	<Field label="Name">
+		<input class="control" bind:value={name} placeholder="Name (e.g. Capital One Quicksilver)" />
+	</Field>
+	<Field label="Bank">
+		<select class="control" bind:value={bank}>
+			<option value="capital_one">Capital One</option>
+			<option value="bmo">BMO</option>
+		</select>
+	</Field>
+	<Field label="Account type">
+		<select class="control" bind:value={type}>
+			<option value="credit">Credit</option>
+			<option value="debit">Debit</option>
+		</select>
+	</Field>
 	<Button type="submit" variant="primary">Add account</Button>
 </form>
 
@@ -91,7 +98,9 @@
 		<li>
 			{#if renameFor === account.id}
 				<form class="form-row" onsubmit={submitRename}>
-					<input class="control" bind:value={renameName} />
+					<Field label="New name">
+						<input class="control" bind:value={renameName} />
+					</Field>
 					<Button type="submit" variant="primary" size="sm">Rename</Button>
 					<Button variant="ghost" size="sm" onclick={() => (renameFor = '')}>Cancel</Button>
 				</form>
@@ -101,16 +110,18 @@
 					Rename
 				</Button>
 			{/if}
-			<input
-				class="control file"
-				type="file"
-				accept=".csv"
-				aria-label="Import CSV into {account.name}"
-				onchange={(e) => {
-					const file = (e.currentTarget as HTMLInputElement).files?.[0];
-					if (file) importCsv(account.id, file);
-				}}
-			/>
+			<Field label="Import CSV">
+				<input
+					class="control file"
+					type="file"
+					accept=".csv"
+					aria-label="Import CSV into {account.name}"
+					onchange={(e) => {
+						const file = (e.currentTarget as HTMLInputElement).files?.[0];
+						if (file) importCsv(account.id, file);
+					}}
+				/>
+			</Field>
 			<ConfirmDelete
 				label="Delete account {account.name}"
 				confirmLabel="Delete account and its transactions"
@@ -124,7 +135,7 @@
 	.form-row {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
+		align-items: flex-end;
 		gap: var(--space-2);
 	}
 

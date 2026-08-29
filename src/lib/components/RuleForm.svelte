@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from './Button.svelte';
+	import Field from './Field.svelte';
 
 	export interface RuleDraft {
 		name: string;
@@ -55,38 +56,50 @@
 </script>
 
 <form class="form-row" onsubmit={handleSubmit}>
-	<input class="control" bind:value={form.name} placeholder="Rule name" />
-	<input
-		class="control mono"
-		bind:value={form.descriptionMatcher}
-		placeholder="Description regex (optional)"
-	/>
-	<select class="control" bind:value={form.amountOperator}>
-		<option value="any">any amount</option>
-		<option value="eq">=</option>
-		<option value="lt">&lt;</option>
-		<option value="lte">&le;</option>
-		<option value="gt">&gt;</option>
-		<option value="gte">&ge;</option>
-	</select>
-	<input
-		class="control numeric"
-		bind:value={form.amountCents}
-		placeholder="Amount ($)"
-		type="number"
-		step="0.01"
-	/>
-	<select class="control" bind:value={form.budgetCategoryId}>
-		<option value="" disabled>Target category</option>
-		{#each categories as cat (cat.id)}
-			<option value={cat.id}>{cat.label}</option>
-		{/each}
-	</select>
-	<select class="control multi" bind:value={form.vendorIds} multiple aria-label="Vendors">
-		{#each vendors as v (v.id)}
-			<option value={v.id}>{v.name}</option>
-		{/each}
-	</select>
+	<Field label="Rule name">
+		<input class="control" bind:value={form.name} placeholder="Rule name" />
+	</Field>
+	<Field label="Description">
+		<input
+			class="control mono"
+			bind:value={form.descriptionMatcher}
+			placeholder="Description regex (optional)"
+		/>
+	</Field>
+	<Field label="Amount">
+		<div class="amount-row">
+			<select class="control" bind:value={form.amountOperator}>
+				<option value="any">any amount</option>
+				<option value="eq">=</option>
+				<option value="lt">&lt;</option>
+				<option value="lte">&le;</option>
+				<option value="gt">&gt;</option>
+				<option value="gte">&ge;</option>
+			</select>
+			<input
+				class="control numeric"
+				bind:value={form.amountCents}
+				placeholder="Amount ($)"
+				type="number"
+				step="0.01"
+			/>
+		</div>
+	</Field>
+	<Field label="Category">
+		<select class="control" bind:value={form.budgetCategoryId}>
+			<option value="" disabled>Target category</option>
+			{#each categories as cat (cat.id)}
+				<option value={cat.id}>{cat.label}</option>
+			{/each}
+		</select>
+	</Field>
+	<Field label="Vendors">
+		<select class="control multi" bind:value={form.vendorIds} multiple aria-label="Vendors">
+			{#each vendors as v (v.id)}
+				<option value={v.id}>{v.name}</option>
+			{/each}
+		</select>
+	</Field>
 	<Button type="submit" variant="primary">{submitLabel}</Button>
 	{#if showCancel}
 		<Button variant="ghost" onclick={oncancel}>Cancel</Button>
@@ -97,7 +110,12 @@
 	.form-row {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
+		align-items: flex-end;
+		gap: var(--space-2);
+	}
+
+	.amount-row {
+		display: flex;
 		gap: var(--space-2);
 	}
 

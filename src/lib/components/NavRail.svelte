@@ -33,15 +33,16 @@
 					href={resolve(link.href)}
 					class="item"
 					class:active={isActive(link.href)}
-					title={link.label}
 					aria-current={isActive(link.href) ? 'page' : undefined}
 				>
-					<Icon name={link.icon} />
-					<span class="visually-hidden">{link.label}</span>
-					{#if link.href === '/review' && unreviewedCount > 0}
-						<span class="badge" aria-hidden="true">{unreviewedCount}</span>
-						<span class="visually-hidden">{unreviewedCount} awaiting review</span>
-					{/if}
+					<span class="icon-wrap">
+						<Icon name={link.icon} />
+						{#if link.href === '/review' && unreviewedCount > 0}
+							<span class="badge" aria-hidden="true">{unreviewedCount}</span>
+							<span class="visually-hidden">{unreviewedCount} awaiting review</span>
+						{/if}
+					</span>
+					<span class="label">{link.label}</span>
 				</a>
 			</li>
 		{/each}
@@ -81,15 +82,26 @@
 		position: relative;
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		width: 40px;
+		gap: var(--space-2);
 		height: 40px;
+		padding: 0 var(--space-2);
 		border-radius: var(--radius-md);
 		color: var(--text-tertiary);
 		text-decoration: none;
+		white-space: nowrap;
 		transition:
 			background-color var(--motion-fast),
 			color var(--motion-fast);
+	}
+
+	.icon-wrap {
+		position: relative;
+		display: inline-flex;
+		flex-shrink: 0;
+	}
+
+	.label {
+		font-size: var(--text-sm);
 	}
 
 	.item:hover {

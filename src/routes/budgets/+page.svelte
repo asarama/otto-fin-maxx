@@ -5,6 +5,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import ConfirmDelete from '$lib/components/ConfirmDelete.svelte';
+	import Field from '$lib/components/Field.svelte';
 	import MoneyText from '$lib/components/MoneyText.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import StatTile from '$lib/components/StatTile.svelte';
@@ -104,32 +105,42 @@
 
 <h2>Add budget</h2>
 <form class="form-row" onsubmit={addBudget}>
-	<select class="control" bind:value={ownerId}>
-		<option value="" disabled>Owner</option>
-		{#each data.owners as owner (owner.id)}
-			<option value={owner.id}>{owner.name}</option>
-		{/each}
-	</select>
-	<input class="control" bind:value={budgetName} placeholder="Budget name" />
+	<Field label="Owner">
+		<select class="control" bind:value={ownerId}>
+			<option value="" disabled>Owner</option>
+			{#each data.owners as owner (owner.id)}
+				<option value={owner.id}>{owner.name}</option>
+			{/each}
+		</select>
+	</Field>
+	<Field label="Budget name">
+		<input class="control" bind:value={budgetName} placeholder="Budget name" />
+	</Field>
 	<Button type="submit" variant="primary">Add budget</Button>
 </form>
 
 <h2>Add category</h2>
 <form class="form-row" onsubmit={addCategory}>
-	<select class="control" bind:value={categoryBudgetId}>
-		<option value="" disabled>Budget</option>
-		{#each data.budgets as budget (budget.id)}
-			<option value={budget.id}>{ownerNameById.get(budget.owner_id)} — {budget.name}</option>
-		{/each}
-	</select>
-	<input class="control" bind:value={categoryName} placeholder="Category name" />
-	<input
-		class="control numeric"
-		bind:value={categoryLimit}
-		placeholder="Monthly limit ($)"
-		type="number"
-		step="0.01"
-	/>
+	<Field label="Budget">
+		<select class="control" bind:value={categoryBudgetId}>
+			<option value="" disabled>Budget</option>
+			{#each data.budgets as budget (budget.id)}
+				<option value={budget.id}>{ownerNameById.get(budget.owner_id)} — {budget.name}</option>
+			{/each}
+		</select>
+	</Field>
+	<Field label="Category name">
+		<input class="control" bind:value={categoryName} placeholder="Category name" />
+	</Field>
+	<Field label="Monthly limit">
+		<input
+			class="control numeric"
+			bind:value={categoryLimit}
+			placeholder="Monthly limit ($)"
+			type="number"
+			step="0.01"
+		/>
+	</Field>
 	<Button type="submit" variant="primary">Add category</Button>
 </form>
 
@@ -163,6 +174,7 @@
 						class="control numeric limit"
 						type="number"
 						step="0.01"
+						aria-label="Limit for {m.categoryName}"
 						value={centsToDollars(m.thisMonthAmountCents).replace(/[$,]/g, '')}
 						onchange={(e) =>
 							updateLimit(m.budgetCategoryId, (e.currentTarget as HTMLInputElement).value)}
@@ -218,7 +230,7 @@
 	.form-row {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
+		align-items: flex-end;
 		gap: var(--space-2);
 	}
 
