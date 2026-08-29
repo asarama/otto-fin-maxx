@@ -183,7 +183,10 @@ export interface ReviewData {
 		vendorName: string | null;
 	})[];
 	vendors: Awaited<ReturnType<typeof listVendors>>;
-	categories: Awaited<ReturnType<typeof listBudgetCategories>>;
+	categories: (Awaited<ReturnType<typeof listBudgetCategories>>[number] & {
+		budgetName: string;
+		ownerName: string;
+	})[];
 }
 
 export async function reviewData(conn: DuckDBConnection): Promise<ReviewData> {
@@ -191,6 +194,8 @@ export async function reviewData(conn: DuckDBConnection): Promise<ReviewData> {
 	const accounts = new Map((await listAccounts(conn)).map((a) => [a.id, a.name]));
 	const vendors = await listVendors(conn);
 	const vendorNames = new Map(vendors.map((v) => [v.id, v.name]));
+	const budgets = new Map((await listBudgets(conn)).map((b) => [b.id, b]));
+	const owners = new Map((await listOwners(conn)).map((o) => [o.id, o.name]));
 	return {
 		transactions: txs.map((t) => ({
 			...t,
@@ -198,6 +203,13 @@ export async function reviewData(conn: DuckDBConnection): Promise<ReviewData> {
 			vendorName: t.vendorId ? (vendorNames.get(t.vendorId) ?? null) : null,
 		})),
 		vendors,
-		categories: await listBudgetCategories(conn),
+		categories: (await listBudgetCategories(conn)).map((c) => {
+			const budget = budgets.get(c.budget_id);
+			return {
+				...c,
+				budgetName: budget?.name ?? '?',
+				ownerName: budget ? (owners.get(budget.owner_id) ?? '?') : '?',
+			};
+		}),
 	};
 }
