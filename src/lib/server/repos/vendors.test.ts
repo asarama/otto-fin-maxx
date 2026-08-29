@@ -8,6 +8,7 @@ import {
 	mergeVendors,
 	deleteVendor,
 	deleteVendorAlias,
+	resolveOrCreateVendor,
 } from './vendors';
 
 describe('vendors repo', () => {
@@ -177,5 +178,59 @@ describe('vendors repo', () => {
 			ruleId,
 		]);
 		expect(rv.getRowObjects().map((r) => String(r.vendor_id))).toEqual([keep.id]);
+	});
+});
+
+describe('resolveOrCreateVendor', () => {
+	it('creates a vendor when nothing matches, keeping the raw string as the first alias', async () => {
+		const conn = await createTestDb();
+		const vendors = await listVendors(conn);
+		const id = await resolveOrCreateVendor(conn, 'TRADER JOE S #078', vendors);
+		expect(id).toBeTruthy();
+		const all = await listVendors(conn);
+		expect(all).toHaveLength(1);
+		expect(all[0].name).toBe('Trader Joe S');
+		expect(all[0].aliases.map((a) => a.name)).toEqual(['TRADER JOE S #078']);
+	});
+
+	it('reuses a vendor whose name matches the cleaned name and adds the raw alias', async () => {
+		const conn = await createTestDb();
+		const existing = await createVendor(conn, 'Trader Joe S');
+		const vendors = await listVendors(conn);
+		const id = await resolveOrCreateVendor(conn, 'TRADER JOE S #225', vendors);
+		expect(id).toBe(existing.id);
+		const all = await listVendors(conn);
+		expect(all).toHaveLength(1);
+		expect(all[0].aliases.map((a) => a.name)).toEqual(['TRADER JOE S #225']);
+	});
+
+	it('reuses a vendor whose alias matches the cleaned name and adds the raw alias', async () => {
+		const conn = await createTestDb();
+		const amazon = await createVendor(conn, 'Amazon', ['AMAZON MKTPL']);
+		const vendors = await listVendors(conn);
+		const id = await resolveOrCreateVendor(conn, 'AMAZON MKTPL*567RG60C1', vendors);
+		expect(id).toBe(amazon.id);
+		const all = await listVendors(conn);
+		expect(all).toHaveLength(1);
+		expect(all[0].aliases.map((a) => a.name)).toEqual(['AMAZON MKTPL', 'AMAZON MKTPL*567RG60C1']);
+	});
+
+	it('returns an existing vendor untouched when the raw string matches exactly', async () => {
+		const conn = await createTestDb();
+		const amazon = await createVendor(conn, 'Amazon', ['AMZN MKTP US']);
+		const vendors = await listVendors(conn);
+		expect(await resolveOrCreateVendor(conn, 'AMZN MKTP US', vendors)).toBe(amazon.id);
+		const all = await listVendors(conn);
+		expect(all).toHaveLength(1);
+		expect(all[0].aliases).toHaveLength(1);
+	});
+
+	it('creates one vendor for repeated raw names in a single import', async () => {
+		const conn = await createTestDb();
+		const vendors = await listVendors(conn);
+		const a = await resolveOrCreateVendor(conn, 'SAFEWAY #1507', vendors);
+		const b = await resolveOrCreateVendor(conn, 'SAFEWAY #1507', vendors);
+		expect(a).toBe(b);
+		expect(await listVendors(conn)).toHaveLength(1);
 	});
 });

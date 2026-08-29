@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DuckDBConnection } from '@duckdb/node-api';
+import { resolveVendor, cleanMerchantName, type VendorSpec } from '$lib/matchers/vendors';
 
 export interface VendorAlias {
 	id: string;
@@ -59,11 +60,13 @@ export async function addVendorAlias(
 	conn: DuckDBConnection,
 	vendorId: string,
 	name: string
-): Promise<void> {
+): Promise<VendorAlias> {
+	const id = randomUUID();
 	await conn.run(
 		'INSERT INTO vendor_aliases (id, vendor_id, name, created_at) VALUES (?, ?, ?, ?)',
-		[randomUUID(), vendorId, name, new Date().toISOString()]
+		[id, vendorId, name, new Date().toISOString()]
 	);
+	return { id, name };
 }
 
 export async function deleteVendorAlias(conn: DuckDBConnection, aliasId: string): Promise<void> {
@@ -110,4 +113,31 @@ export async function mergeVendors(
      )`
 	);
 	await conn.run('DELETE FROM vendors WHERE id = ?', [removeId]);
+}
+
+export async function resolveOrCreateVendor(
+	conn: DuckDBConnection,
+	rawName: string,
+	vendors: Vendor[]
+): Promise<string> {
+	const specs: VendorSpec[] = vendors.map((v) => ({
+		id: v.id,
+		name: v.name,
+		aliases: v.aliases.map((a) => a.name),
+	}));
+	const direct = resolveVendor(rawName, specs);
+	if (direct) return direct;
+	const cleaned = cleanMerchantName(rawName) || rawName;
+	const viaCleaned = resolveVendor(cleaned, specs);
+	if (viaCleaned) {
+		const vendor = vendors.find((v) => v.id === viaCleaned)!;
+		if (!vendor.aliases.some((a) => a.name === rawName)) {
+			const alias = await addVendorAlias(conn, viaCleaned, rawName);
+			vendor.aliases.push(alias);
+		}
+		return viaCleaned;
+	}
+	const created = await createVendor(conn, cleaned, [rawName]);
+	vendors.push(created);
+	return created.id;
 }
