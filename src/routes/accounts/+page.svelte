@@ -35,10 +35,9 @@
 				return;
 			}
 			const result = await res.json();
-			toastStore.add(
-				'ok',
-				`Imported ${result.imported}, skipped ${result.duplicates} duplicate(s)`
-			);
+			const parts = [`Imported ${result.imported}, skipped ${result.duplicates} duplicate(s)`];
+			if (result.vendorUpdates > 0) parts.push(`${result.vendorUpdates} re-linked to vendor(s)`);
+			toastStore.add('ok', parts.join(' · '));
 			await invalidateAll();
 		} catch (err) {
 			toastStore.add('error', (err as Error).message);
