@@ -14,9 +14,28 @@
 
 	const totalCents = $derived(data.transactions.reduce((sum, tx) => sum + tx.amountCents, 0));
 
+	function escapeRegex(s: string): string {
+		return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	}
+
 	function toggle(txId: string) {
 		if (selected.has(txId)) selected.delete(txId);
 		else selected.add(txId);
+	}
+
+	async function runRules() {
+		try {
+			const res = await fetch('/api/review/run-rules', { method: 'POST' });
+			if (!res.ok) {
+				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
+				return;
+			}
+			const { categorized } = await res.json();
+			toastStore.add('ok', `Rules categorized ${categorized} transaction(s)`);
+			invalidateAll();
+		} catch (err) {
+			toastStore.add('error', (err as Error).message);
+		}
 	}
 
 	async function batchAssign() {
@@ -97,13 +116,17 @@
 	<select class="control" bind:value={batchCategoryId}>
 		<option value="" disabled>Assign selected to category</option>
 		{#each data.categories as cat (cat.id)}
-			<option value={cat.id}>{cat.name}</option>
+			<option value={cat.id}
+				>{cat.ownerName} / {cat.budgetName} / {cat.name}</option
+			>
 		{/each}
 	</select>
 	<Button type="submit" variant="primary" disabled={selected.size === 0}>
 		Assign {selected.size} selected
 	</Button>
 </form>
+
+<Button variant="secondary" onclick={runRules}>Run rules</Button>
 
 <ul class="rows">
 	{#each data.transactions as tx (tx.id)}
@@ -118,27 +141,30 @@
 				</span>
 			</label>
 
-			<details>
-				<summary>Create rule</summary>
-				<div class="form-row">
-					<input class="control" bind:value={ruleName} placeholder="Rule name" />
-					<select class="control" bind:value={ruleVendorId}>
-						<option value="">No vendor</option>
-						{#each data.vendors as v (v.id)}
-							<option value={v.id}>{v.name}</option>
-						{/each}
-					</select>
-					<select class="control" bind:value={ruleCategoryId}>
-						<option value="" disabled>Category</option>
-						{#each data.categories as cat (cat.id)}
-							<option value={cat.id}>{cat.name}</option>
-						{/each}
-					</select>
-					<Button variant="secondary" size="sm" onclick={() => createRuleFrom(tx)}>
-						Create rule
-					</Button>
-				</div>
-			</details>
+<details>
+					<summary>Create rule</summary>
+					<div class="form-row">
+						<input class="control" bind:value={ruleName} placeholder="Rule name" />
+						<select class="control" bind:value={ruleVendorId}>
+							<option value="">No vendor</option>
+							{#each data.vendors as v (v.id)}
+								<option value={v.id}>{v.name}</option>
+							{/each}
+						</select>
+						<select class="control" bind:value={ruleCategoryId}>
+							<option value="" disabled>Category</option>
+							{#each data.categories as cat (cat.id)}
+								<option value={cat.id}
+									>{cat.ownerName} / {cat.budgetName} / {cat.name}</option
+								>
+							{/each}
+						</select>
+						<Button variant="secondary" size="sm" onclick={() => createRuleFrom(tx)}>
+							Create rule
+						</Button>
+					</div>
+					<p class="regex">Description regex: <code>{escapeRegex(tx.description)}</code></p>
+				</details>
 		</li>
 	{/each}
 </ul>
@@ -209,5 +235,15 @@
 
 	details[open] summary {
 		margin-bottom: var(--space-2);
+	}
+
+	.regex {
+		margin-top: var(--space-2);
+		font-size: var(--text-sm);
+		color: var(--text-secondary);
+	}
+
+	.regex code {
+		color: var(--text-primary);
 	}
 </style>
