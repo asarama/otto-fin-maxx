@@ -1,8 +1,9 @@
 .control {
+	height: 40px;
 	background: var(--surface-primary);
 	border: 1px solid var(--border-default);
 	border-radius: var(--radius-lg);
-	padding: var(--space-2) var(--space-3);
+	padding: var(--space-1) var(--space-3);
 	color: var(--text-primary);
 	transition:
 		border-color var(--motion-fast),

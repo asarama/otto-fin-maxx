@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Button from './Button.svelte';
 	import Field from './Field.svelte';
+	import MultiSelect from './MultiSelect.svelte';
 
 	export interface RuleDraft {
 		name: string;
@@ -94,11 +95,12 @@
 		</select>
 	</Field>
 	<Field label="Vendors">
-		<select class="control multi" bind:value={form.vendorIds} multiple aria-label="Vendors">
-			{#each vendors as v (v.id)}
-				<option value={v.id}>{v.name}</option>
-			{/each}
-		</select>
+		<MultiSelect
+			label="Vendors"
+			options={vendors}
+			value={form.vendorIds}
+			onchange={(ids) => (form.vendorIds = ids)}
+		/>
 	</Field>
 	<Button type="submit" variant="primary">{submitLabel}</Button>
 	{#if showCancel}
@@ -117,11 +119,6 @@
 	.amount-row {
 		display: flex;
 		gap: var(--space-2);
-	}
-
-	.multi {
-		min-width: 14ch;
-		max-height: 96px;
 	}
 
 	.mono {
