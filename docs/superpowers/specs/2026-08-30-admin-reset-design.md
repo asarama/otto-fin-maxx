@@ -45,7 +45,7 @@ Explicitly out of scope:
 
 Admin page shows a **Reset all data** action backed by `POST /api/admin/reset`.
 It deletes every row from all 10 tables, in foreign-key-safe order (children
-first), inside a single transaction:
+first), without a wrapping transaction (see the DuckDB bug note in §6):
 
 ```
 1. account_transactions

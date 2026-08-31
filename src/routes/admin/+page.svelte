@@ -68,7 +68,9 @@
 	<Field label="Owner name">
 		<input class="control" bind:value={ownerName} placeholder="Owner name" />
 	</Field>
-	<Button type="submit" variant="primary" busy={adding}>Add owner</Button>
+	<Button type="submit" variant="primary" busy={adding} disabled={!ownerName.trim()}>
+		Add owner
+	</Button>
 </form>
 
 <ul class="rows">

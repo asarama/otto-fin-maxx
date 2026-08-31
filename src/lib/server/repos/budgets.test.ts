@@ -145,4 +145,13 @@ describe('createOwner', () => {
 		await expect(createOwner(conn, 'Kids')).rejects.toThrow(/already exists/);
 		await expect(createOwner(conn, '   ')).rejects.toThrow(/cannot be empty/);
 	});
+
+	it('trims the name before storing', async () => {
+		const conn = await createTestDb();
+		const created = await createOwner(conn, '  Kids  ');
+		expect(created).toMatchObject({ name: 'Kids' });
+		const owners = await listOwners(conn);
+		expect(owners.map((o) => o.name)).toContain('Kids');
+		expect(owners.map((o) => o.name)).not.toContain('  Kids  ');
+	});
 });
