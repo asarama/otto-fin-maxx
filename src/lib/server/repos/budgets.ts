@@ -31,6 +31,16 @@ export async function listOwners(conn: DuckDBConnection): Promise<Owner[]> {
 	return reader.getRowObjects().map((r) => ({ id: String(r.id), name: String(r.name) }));
 }
 
+export async function createOwner(conn: DuckDBConnection, name: string): Promise<Owner> {
+	const trimmed = name.trim();
+	if (!trimmed) throw new Error('Owner name cannot be empty');
+	const existing = await conn.runAndReadAll('SELECT id FROM owners WHERE name = ?', [trimmed]);
+	if (existing.getRowObjects().length > 0) throw new Error(`Owner already exists: ${trimmed}`);
+	const id = randomUUID();
+	await conn.run('INSERT INTO owners (id, name) VALUES (?, ?)', [id, trimmed]);
+	return { id, name: trimmed };
+}
+
 export async function listBudgets(conn: DuckDBConnection): Promise<Budget[]> {
 	const reader = await conn.runAndReadAll('SELECT id, name, owner_id FROM budgets ORDER BY name');
 	return reader

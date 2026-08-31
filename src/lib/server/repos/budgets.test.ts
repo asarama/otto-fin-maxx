@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createTestDb } from '../test-helpers';
 import {
+	createOwner,
 	listOwners,
 	listBudgets,
 	createBudget,
@@ -127,5 +128,21 @@ describe('budgets repo', () => {
 
 		const august = await ensureBudgetCategoryMonth(conn, cat.id, '2026-08');
 		expect(august.amount_cents).toBe(15000);
+	});
+});
+
+describe('createOwner', () => {
+	it('creates an owner', async () => {
+		const conn = await createTestDb();
+		const created = await createOwner(conn, 'Kids');
+		expect(created.name).toBe('Kids');
+		expect((await listOwners(conn)).map((o) => o.name)).toContain('Kids');
+	});
+
+	it('rejects duplicate and blank names', async () => {
+		const conn = await createTestDb();
+		await createOwner(conn, 'Kids');
+		await expect(createOwner(conn, 'Kids')).rejects.toThrow(/already exists/);
+		await expect(createOwner(conn, '   ')).rejects.toThrow(/cannot be empty/);
 	});
 });
