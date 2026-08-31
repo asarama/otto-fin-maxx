@@ -41,7 +41,7 @@ npm install
 npm run dev
 ```
 
-Open the printed localhost URL. First run seeds the defaults (owners: Me, Wife, Family) and creates the DuckDB file at `data/finance.db`.
+Open the printed localhost URL. First run creates the DuckDB schema file at `data/finance.db`. Owners are created manually from the Admin tab.
 
 ## Importing transactions
 
