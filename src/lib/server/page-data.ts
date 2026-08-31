@@ -14,6 +14,7 @@ import {
 } from './repos/transactions';
 import { listAccounts } from './repos/accounts';
 import { listVendors } from './repos/vendors';
+import { tableCounts } from './repos/admin';
 
 export interface DashboardData {
 	month: string;
@@ -211,5 +212,17 @@ export async function reviewData(conn: DuckDBConnection): Promise<ReviewData> {
 				ownerName: budget ? (owners.get(budget.owner_id) ?? '?') : '?',
 			};
 		}),
+	};
+}
+
+export interface AdminData {
+	counts: { table: string; count: number }[];
+	owners: Awaited<ReturnType<typeof listOwners>>;
+}
+
+export async function adminData(conn: DuckDBConnection): Promise<AdminData> {
+	return {
+		counts: await tableCounts(conn),
+		owners: await listOwners(conn),
 	};
 }
