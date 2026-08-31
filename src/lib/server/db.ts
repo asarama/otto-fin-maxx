@@ -2,7 +2,6 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import { SCHEMA_SQL } from './schema';
-import { seedDefaults } from './seed';
 
 const g = globalThis as unknown as { __financeDbConnection?: DuckDBConnection };
 
@@ -17,7 +16,6 @@ export async function getDb(): Promise<DuckDBConnection> {
 	const instance = await DuckDBInstance.create(path);
 	const conn = await instance.connect();
 	await conn.run(SCHEMA_SQL);
-	await seedDefaults(conn);
 	g.__financeDbConnection = conn;
 	return conn;
 }
