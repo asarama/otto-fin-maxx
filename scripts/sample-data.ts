@@ -1,5 +1,5 @@
 import { getDb } from '../src/lib/server/db';
-import { listOwners, createBudget, createBudgetCategory } from '../src/lib/server/repos/budgets';
+import { createOwner, createBudget, createBudgetCategory } from '../src/lib/server/repos/budgets';
 import { createVendor } from '../src/lib/server/repos/vendors';
 import { createAccount } from '../src/lib/server/repos/accounts';
 import { importTransactions } from '../src/lib/server/importCsv';
@@ -12,6 +12,12 @@ async function ensureAccount(name: string, bank: string, type: string) {
 	return rows.length > 0
 		? { id: String(rows[0].id), name }
 		: createAccount(conn, { name, bank, type });
+}
+
+async function ensureOwner(name: string) {
+	const existing = await conn.runAndReadAll('SELECT id FROM owners WHERE name = ?', [name]);
+	const rows = existing.getRowObjects();
+	return rows.length > 0 ? { id: String(rows[0].id) } : createOwner(conn, name);
 }
 
 async function ensureBudget(ownerId: string, name: string) {
@@ -43,8 +49,8 @@ async function ensureVendor(name: string, aliases: string[]) {
 const capone = await ensureAccount('Capital One Quicksilver', 'capital_one', 'credit');
 const bmo = await ensureAccount('BMO Checking', 'bmo', 'debit');
 
-const me = (await listOwners(conn)).find((o) => o.name === 'Me')!;
-const family = (await listOwners(conn)).find((o) => o.name === 'Family')!;
+const me = await ensureOwner('Me');
+const family = await ensureOwner('Family');
 const personal = await ensureBudget(me.id, 'Personal');
 const familyBudget = await ensureBudget(family.id, 'Household');
 const gaming = await ensureCategory(personal.id, 'Gaming', 10000);
