@@ -17,6 +17,7 @@
 		{ href: '/accounts', icon: 'accounts', label: 'Accounts' },
 		{ href: '/vendors', icon: 'vendors', label: 'Vendors' },
 		{ href: '/rules', icon: 'rules', label: 'Rules' },
+		{ href: '/admin', icon: 'admin', label: 'Admin' },
 	] as const;
 
 	function isActive(href: string): boolean {
