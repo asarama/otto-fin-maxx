@@ -11,6 +11,7 @@ export interface Transaction {
 	vendorId: string | null;
 	budgetCategoryMonthId: string | null;
 	assignmentStatus: string;
+	ignored: boolean;
 }
 
 export interface TransactionFilters {
@@ -18,6 +19,7 @@ export interface TransactionFilters {
 	month?: string;
 	status?: string;
 	search?: string;
+	ignored?: boolean;
 }
 
 function rowToTransaction(row: Record<string, unknown>): Transaction {
@@ -33,6 +35,7 @@ function rowToTransaction(row: Record<string, unknown>): Transaction {
 		budgetCategoryMonthId:
 			row.budget_category_month_id === null ? null : String(row.budget_category_month_id),
 		assignmentStatus: String(row.assignment_status),
+		ignored: Boolean(row.ignored),
 	};
 }
 
@@ -53,6 +56,11 @@ export async function listTransactions(
 	if (filters.status) {
 		where.push('assignment_status = ?');
 		params.push(filters.status);
+	}
+	if (filters.ignored === true) {
+		where.push('ignored = true');
+	} else if (filters.ignored === false) {
+		where.push('ignored IS NOT TRUE');
 	}
 	if (filters.search) {
 		where.push('lower(description) LIKE lower(?)');
@@ -82,7 +90,27 @@ export async function assignTransaction(
 	budgetCategoryMonthId: string
 ): Promise<void> {
 	await conn.run(
-		'UPDATE account_transactions SET budget_category_month_id = ?, assignment_status = ? WHERE id = ?',
+		'UPDATE account_transactions SET budget_category_month_id = ?, assignment_status = ?, ignored = false WHERE id = ?',
 		[budgetCategoryMonthId, 'manual', txId]
+	);
+}
+
+export async function ignoreTransactions(conn: DuckDBConnection, txIds: string[]): Promise<void> {
+	if (txIds.length === 0) return;
+	const placeholders = txIds.map(() => '?').join(', ');
+	await conn.run(
+		`UPDATE account_transactions
+     SET ignored = true, assignment_status = 'manual', budget_category_month_id = NULL
+     WHERE id IN (${placeholders})`,
+		txIds
+	);
+}
+
+export async function unignoreTransaction(conn: DuckDBConnection, txId: string): Promise<void> {
+	await conn.run(
+		`UPDATE account_transactions
+     SET ignored = false, assignment_status = 'unreviewed', budget_category_month_id = NULL
+     WHERE id = ?`,
+		[txId]
 	);
 }

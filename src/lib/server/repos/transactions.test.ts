@@ -13,6 +13,8 @@ import {
 	countUnreviewed,
 	getUnreviewed,
 	assignTransaction,
+	ignoreTransactions,
+	unignoreTransaction,
 } from './transactions';
 
 async function seedTx(
@@ -93,5 +95,79 @@ describe('transactions repo', () => {
 		const txs = await listTransactions(conn, {});
 		expect(txs[0].budgetCategoryMonthId).toBe(month.id);
 		expect(txs[0].assignmentStatus).toBe('manual');
+	});
+
+	it('ignores transactions: sets flag, manual status, clears category', async () => {
+		const conn = await createTestDb();
+		await seedTx(conn);
+		const me = (await listOwners(conn)).find((o) => o.name === 'Me')!;
+		const budget = await createBudget(conn, { ownerId: me.id, name: 'Personal' });
+		const cat = await createBudgetCategory(conn, {
+			budgetId: budget.id,
+			name: 'Gaming',
+			monthlyLimitCents: 10000,
+		});
+		const month = await ensureBudgetCategoryMonth(conn, cat.id, '2026-07');
+		await assignTransaction(conn, 'tx1', month.id);
+
+		await ignoreTransactions(conn, ['tx1']);
+
+		const t = (await listTransactions(conn, {}))[0];
+		expect(t.ignored).toBe(true);
+		expect(t.assignmentStatus).toBe('manual');
+		expect(t.budgetCategoryMonthId).toBeNull();
+	});
+
+	it('un-ignores a transaction back to unreviewed', async () => {
+		const conn = await createTestDb();
+		await seedTx(conn);
+		await ignoreTransactions(conn, ['tx1']);
+		await unignoreTransaction(conn, 'tx1');
+		const t = (await listTransactions(conn, {}))[0];
+		expect(t.ignored).toBe(false);
+		expect(t.assignmentStatus).toBe('unreviewed');
+	});
+
+	it('assigning a category clears the ignored flag', async () => {
+		const conn = await createTestDb();
+		await seedTx(conn);
+		const me = (await listOwners(conn)).find((o) => o.name === 'Me')!;
+		const budget = await createBudget(conn, { ownerId: me.id, name: 'Personal' });
+		const cat = await createBudgetCategory(conn, {
+			budgetId: budget.id,
+			name: 'Gaming',
+			monthlyLimitCents: 10000,
+		});
+		const month = await ensureBudgetCategoryMonth(conn, cat.id, '2026-07');
+		await ignoreTransactions(conn, ['tx1']);
+
+		await assignTransaction(conn, 'tx1', month.id);
+
+		const t = (await listTransactions(conn, {}))[0];
+		expect(t.ignored).toBe(false);
+		expect(t.assignmentStatus).toBe('manual');
+	});
+
+	it('excludes ignored transactions from the review queue', async () => {
+		const conn = await createTestDb();
+		await seedTx(conn);
+		await seedTx(conn, { id: 'tx2', externalId: 'e2' });
+		await ignoreTransactions(conn, ['tx1']);
+		expect(await countUnreviewed(conn)).toBe(1);
+		expect((await getUnreviewed(conn)).map((t) => t.id)).toEqual(['tx2']);
+	});
+
+	it('filters by ignored flag', async () => {
+		const conn = await createTestDb();
+		await seedTx(conn);
+		await seedTx(conn, { id: 'tx2', externalId: 'e2' });
+		await ignoreTransactions(conn, ['tx1']);
+		expect((await listTransactions(conn, { ignored: true })).map((t) => t.id)).toEqual(['tx1']);
+		expect((await listTransactions(conn, { ignored: false })).map((t) => t.id)).toEqual(['tx2']);
+	});
+
+	it('ignoreTransactions is a no-op for an empty list', async () => {
+		const conn = await createTestDb();
+		await expect(ignoreTransactions(conn, [])).resolves.toBeUndefined();
 	});
 });
