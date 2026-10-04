@@ -43,6 +43,34 @@ describe('rules repo', () => {
 		expect(await listRules(conn)).toHaveLength(0);
 	});
 
+	it('updates string fields while the rule has vendor associations', async () => {
+		const conn = await createTestDb();
+		const cat = await makeCategory(conn);
+		const amazon = await createVendor(conn, 'Amazon');
+
+		const rule = await createRule(conn, {
+			name: 'Amazon',
+			descriptionMatcher: '^AMZN',
+			budgetCategoryId: cat.id,
+			priority: 1,
+			vendorIds: [amazon.id],
+		});
+
+		await updateRule(conn, rule.id, {
+			name: 'Amazon Prime',
+			descriptionMatcher: '^AMZN.*',
+			amountOperator: 'any',
+			amountCents: null,
+			budgetCategoryId: cat.id,
+			vendorIds: [amazon.id],
+		});
+
+		const rules = await listRules(conn);
+		expect(rules[0].name).toBe('Amazon Prime');
+		expect(rules[0].descriptionMatcher).toBe('^AMZN.*');
+		expect(rules[0].vendorIds).toEqual([amazon.id]);
+	});
+
 	it('rejects creating a rule without a budget category', async () => {
 		const conn = await createTestDb();
 		await expect(createRule(conn, { name: 'No category', budgetCategoryId: '' })).rejects.toThrow(

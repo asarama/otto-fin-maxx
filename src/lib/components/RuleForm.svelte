@@ -60,7 +60,7 @@
 	<Field label="Rule name">
 		<input class="control" bind:value={form.name} placeholder="Rule name" />
 	</Field>
-	<Field label="Description">
+	<Field label="Description (regex)">
 		<input
 			class="control mono"
 			bind:value={form.descriptionMatcher}

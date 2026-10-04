@@ -116,16 +116,31 @@ export async function updateRule(
 		sets.push('enabled = ?');
 		params.push(patch.enabled);
 	}
-	if (sets.length > 0) {
-		params.push(id);
-		await conn.run(`UPDATE rules SET ${sets.join(', ')} WHERE id = ?`, params);
-	}
-	if (patch.vendorIds !== undefined) {
-		await conn.run('DELETE FROM rule_vendors WHERE rule_id = ?', [id]);
-		for (const vendorId of patch.vendorIds) {
+	const vendorIds =
+		patch.vendorIds === undefined ? await getRuleVendorIds(conn, id) : patch.vendorIds;
+
+	await conn.run('DELETE FROM rule_vendors WHERE rule_id = ?', [id]);
+	try {
+		if (sets.length > 0) {
+			params.push(id);
+			await conn.run(`UPDATE rules SET ${sets.join(', ')} WHERE id = ?`, params);
+		}
+	} catch (err) {
+		for (const vendorId of vendorIds) {
 			await conn.run('INSERT INTO rule_vendors (rule_id, vendor_id) VALUES (?, ?)', [id, vendorId]);
 		}
+		throw err;
 	}
+	for (const vendorId of vendorIds) {
+		await conn.run('INSERT INTO rule_vendors (rule_id, vendor_id) VALUES (?, ?)', [id, vendorId]);
+	}
+}
+
+async function getRuleVendorIds(conn: DuckDBConnection, id: string): Promise<string[]> {
+	const reader = await conn.runAndReadAll('SELECT vendor_id FROM rule_vendors WHERE rule_id = ?', [
+		id,
+	]);
+	return reader.getRowObjects().map((row) => String(row.vendor_id));
 }
 
 export async function deleteRule(conn: DuckDBConnection, id: string): Promise<void> {

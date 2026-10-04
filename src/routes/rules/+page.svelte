@@ -179,7 +179,9 @@
 				<span class="title">
 					<strong>{rule.name}</strong>
 					<em>{rule.enabled ? 'on' : 'off'} &middot; priority {rule.priority}</em>
-					{#if rule.descriptionMatcher}<code>{rule.descriptionMatcher}</code>{/if}
+					{#if rule.descriptionMatcher}<span class="matcher-label">regex</span><code
+							>{rule.descriptionMatcher}</code
+						>{/if}
 				</span>
 				<span class="actions">
 					<IconButton label="Move {rule.name} up" glyph="↑" onclick={() => move(rule.id, 'up')} />
@@ -306,6 +308,13 @@
 		padding: 0 var(--space-2);
 		border-radius: var(--radius-sm);
 		background: var(--surface-secondary);
+	}
+
+	.matcher-label {
+		color: var(--text-secondary);
+		font-size: var(--text-xs);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 
 	.actions {
