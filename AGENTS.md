@@ -89,6 +89,7 @@ Stop the dev server when done: `pkill -f "vite dev"`.
 - **DuckDB is single-writer.** Only one process may hold a DB file open at a time. You cannot run `tsx` scripts against a DB that a running dev server already has open (file lock error). Stop the dev server before running scripts against the same `FINANCE_DB_PATH`.
 - **`at` is a reserved word in DuckDB** (`AT TIME ZONE`). Never alias a table `at`; use e.g. `tx`. SQL is only validated at runtime, not by `check`/`build` — always exercise queries against a live DB.
 - DB path: `process.env.FINANCE_DB_PATH ?? 'data/finance.db'` (see `src/lib/server/db.ts`). `data/` and `*.db` are gitignored.
+- **Back up the database before any dev/test work.** `data/finance.db` is the real production data — do not run experiments, probes, or destructive scripts against it. Either set `FINANCE_DB_PATH` to a throwaway path (recommended) or make a copy first: `cp data/finance.db data/finance.backup-$(date +%Y%m%d%H%M%S).db`.
 - Node CLI/`tsx` top-level `await` fails outside the project's module scope — wrap scripts in an async IIFE if needed.
 
 ## Code conventions
