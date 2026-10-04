@@ -8,7 +8,7 @@
 
 	let account = $state(data.filters.accountId ?? '');
 	let month = $state(data.filters.month ?? '');
-	let status = $state(data.filters.status ?? '');
+	let status = $state(data.filters.ignored ? 'ignored' : (data.filters.status ?? ''));
 	let search = $state(data.filters.search ?? '');
 
 	let importAccountId = $state('');
@@ -85,6 +85,16 @@
 		});
 		invalidateAll();
 	}
+
+	async function ignore(txId: string) {
+		await fetch(`/api/transactions/${txId}/ignore`, { method: 'POST' });
+		invalidateAll();
+	}
+
+	async function unignore(txId: string) {
+		await fetch(`/api/transactions/${txId}/unignore`, { method: 'POST' });
+		invalidateAll();
+	}
 </script>
 
 <h1>Transactions</h1>
@@ -116,6 +126,7 @@
 			<option value="unreviewed">unreviewed</option>
 			<option value="auto">auto</option>
 			<option value="manual">manual</option>
+			<option value="ignored">ignored</option>
 		</select>
 	</Field>
 	<Button type="submit" variant="primary">Filter</Button>
@@ -179,8 +190,8 @@
 				<td>{tx.vendorName ?? tx.rawVendorName}</td>
 				<td class="end">{centsToDollars(tx.amountCents)}</td>
 				<td>{tx.categoryName ?? '—'}</td>
-				<td>{tx.assignmentStatus}</td>
-				<td>
+				<td>{tx.ignored ? 'ignored' : tx.assignmentStatus}</td>
+				<td class="actions">
 					<select
 						class="control"
 						aria-label="Assign category for {tx.description}"
@@ -196,6 +207,11 @@
 							<option value={cat.id}>{cat.name}</option>
 						{/each}
 					</select>
+					{#if tx.ignored}
+						<Button variant="secondary" size="sm" onclick={() => unignore(tx.id)}>Un-ignore</Button>
+					{:else}
+						<Button variant="secondary" size="sm" onclick={() => ignore(tx.id)}>Ignore</Button>
+					{/if}
 				</td>
 			</tr>
 		{/each}
