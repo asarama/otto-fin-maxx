@@ -1,6 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createTestDb } from './test-helpers';
 import { seedDefaults } from './seed';
+import { getDb } from './db';
+
+const cache = globalThis as unknown as {
+	__financeDbConnection?: unknown;
+	__financeDbPromise?: unknown;
+};
+
+function resetDbCache() {
+	delete cache.__financeDbConnection;
+	delete cache.__financeDbPromise;
+}
 
 describe('schema + seed', () => {
 	it('creates all tables', async () => {
@@ -40,5 +54,28 @@ describe('schema + seed', () => {
 		await seedDefaults(conn);
 		const owners = await conn.runAndReadAll('SELECT count(*) AS n FROM owners');
 		expect(Number(owners.getRowObjects()[0].n)).toBe(3);
+	});
+});
+
+describe('getDb', () => {
+	const originalPath = process.env.FINANCE_DB_PATH;
+
+	afterEach(() => {
+		resetDbCache();
+		if (originalPath === undefined) delete process.env.FINANCE_DB_PATH;
+		else process.env.FINANCE_DB_PATH = originalPath;
+	});
+
+	it('returns one shared connection when called concurrently', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'finance-db-'));
+		process.env.FINANCE_DB_PATH = join(dir, 'test.db');
+		resetDbCache();
+		try {
+			const [a, b] = await Promise.all([getDb(), getDb()]);
+			expect(b).toBe(a);
+			expect(await getDb()).toBe(a);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

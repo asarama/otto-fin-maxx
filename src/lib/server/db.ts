@@ -3,14 +3,16 @@ import { dirname } from 'node:path';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
 import { SCHEMA_SQL } from './schema';
 
-const g = globalThis as unknown as { __financeDbConnection?: DuckDBConnection };
+const g = globalThis as unknown as {
+	__financeDbConnection?: DuckDBConnection;
+	__financeDbPromise?: Promise<DuckDBConnection>;
+};
 
 export function getDbPath(): string {
 	return process.env.FINANCE_DB_PATH ?? 'data/finance.db';
 }
 
-export async function getDb(): Promise<DuckDBConnection> {
-	if (g.__financeDbConnection) return g.__financeDbConnection;
+async function initDb(): Promise<DuckDBConnection> {
 	const path = getDbPath();
 	mkdirSync(dirname(path), { recursive: true });
 	const instance = await DuckDBInstance.create(path);
@@ -18,4 +20,15 @@ export async function getDb(): Promise<DuckDBConnection> {
 	await conn.run(SCHEMA_SQL);
 	g.__financeDbConnection = conn;
 	return conn;
+}
+
+export function getDb(): Promise<DuckDBConnection> {
+	if (g.__financeDbConnection) return Promise.resolve(g.__financeDbConnection);
+	if (!g.__financeDbPromise) {
+		g.__financeDbPromise = initDb().catch((err) => {
+			g.__financeDbPromise = undefined;
+			throw err;
+		});
+	}
+	return g.__financeDbPromise;
 }
