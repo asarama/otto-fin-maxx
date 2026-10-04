@@ -84,6 +84,8 @@ Consequences, with no query changes required for review:
   rows are `'manual'`, so they drop out and count as reviewed.
 - `categorizeUnreviewed` only ever touches `'unreviewed'` rows, so ignored rows
   are never re-categorized by a rule run.
+- Assigning a category (`assignTransaction`) also sets `ignored = false`, so
+  categorizing an ignored row un-ignores it and preserves the table's invariant.
 - Ignoring always clears `budget_category_month_id`, so the `LEFT JOIN` in
   `categoryMonthRows` (`page-data.ts:44`) already excludes the row from spend. A
   defensive `AND (tx.ignored IS NOT TRUE)` is added to that join anyway.
@@ -117,14 +119,10 @@ rules are **not** auto-run (the user can press "Run rules").
   selecting `ignored` lists rows with `ignored = true`, and selecting `manual`
   excludes ignored rows.
 - The Status column displays `ignored` whenever the flag is set (otherwise the
-  `assignment_status` as today).
+  `assignment_status` as today). The column renders plain text today, so the page
+  computes the label inline (`tx.ignored ? 'ignored' : tx.assignmentStatus`).
 - The action cell gains **Ignore** for normal rows and **Un-ignore** for ignored
   rows, alongside the existing category dropdown.
-
-### 4.5 Status badge
-
-`StatusBadge.svelte` gains an `.ignored` style. Pages pass the literal string
-`'ignored'` for ignored rows so the badge reads `ignored`.
 
 ## 5. Implementation surface
 
@@ -140,7 +138,6 @@ rules are **not** auto-run (the user can press "Run rules").
 | `src/routes/transactions/+page.svelte` | `ignored` status filter option; status column shows `ignored`; Ignore/Un-ignore actions |
 | `src/routes/api/transactions/[id]/ignore/+server.ts` | new; `POST` → `ignoreTransactions(conn, [id])` |
 | `src/routes/api/transactions/[id]/unignore/+server.ts` | new; `POST` → `unignoreTransaction(conn, id)` |
-| `src/lib/components/StatusBadge.svelte` | add `.ignored` style |
 | `AGENTS.md` | document the `ignored` column and that `'manual'` also covers ignored rows |
 
 No new rule fields, no parser changes, no changes to review count queries.
