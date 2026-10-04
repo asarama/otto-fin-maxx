@@ -71,6 +71,27 @@
 		}
 	}
 
+	async function ignore(txIds: string[]) {
+		if (txIds.length === 0) return;
+		try {
+			const res = await fetch('/api/review/ignore', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ txIds }),
+			});
+			if (!res.ok) {
+				toastStore.add('error', (await res.text()).replace(/^\d+:\s*/, ''));
+				return;
+			}
+			const { ignored } = await res.json();
+			selected.clear();
+			toastStore.add('ok', `Ignored ${ignored} transaction(s)`);
+			invalidateAll();
+		} catch (err) {
+			toastStore.add('error', (err as Error).message);
+		}
+	}
+
 	async function createRuleFrom(
 		tx: { id: string; description: string; vendorId: string | null },
 		draft: RuleDraft
@@ -138,6 +159,9 @@
 		Assign {selected.size} selected
 	</Button>
 	<Button variant="secondary" onclick={runRules}>Run rules</Button>
+	<Button variant="secondary" onclick={() => ignore([...selected])} disabled={selected.size === 0}>
+		Ignore {selected.size} selected
+	</Button>
 </form>
 
 <ul class="rows">
@@ -152,6 +176,8 @@
 					<em>({tx.accountName}{tx.vendorName ? `, ${tx.vendorName}` : ''})</em>
 				</span>
 			</label>
+
+			<Button variant="secondary" onclick={() => ignore([tx.id])}>Ignore</Button>
 
 			<details>
 				<summary>Create rule</summary>
