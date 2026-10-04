@@ -98,6 +98,7 @@ Stop the dev server when done: `pkill -f "vite dev"`.
 - Dates are `TEXT 'YYYY-MM-DD'`; months are `TEXT 'YYYY-MM'` (`src/lib/date.ts`).
 - All DB access lives under `src/lib/server/` or `src/routes/**/+server.ts` / `+page.server.ts`. Nothing else imports `@duckdb/node-api`. Repos wrap CRUD; pure logic (money, dates, CSV parsing, rule/vendor matching) lives in `$lib` and is unit-tested.
 - `assignment_status`: `'auto' | 'manual' | 'unreviewed'`. Rule re-runs only touch `'unreviewed'`; never overwrite `'auto'`/`'manual'`.
+- `account_transactions.ignored`: a separate boolean column. Ignored rows carry `assignment_status = 'manual'` (so they leave the review queue) and `budget_category_month_id = NULL` (so they are excluded from budget spend). Assigning a category clears `ignored`. Existing DBs gain the column via `MIGRATIONS_SQL` run in `initDb()`.
 - `amount_operator`: `'any' | 'eq' | 'lt' | 'lte' | 'gt' | 'gte'`.
 - `accounts.bank`: `'capital_one' | 'bmo'`; `accounts.type`: `'credit' | 'debit'`.
 - Rule matching: first match wins by `priority` ascending; a match requires every set criterion to pass.
