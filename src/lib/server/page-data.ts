@@ -42,6 +42,7 @@ async function categoryMonthRows(conn: DuckDBConnection, month: string) {
      JOIN budgets b ON b.id = bc.budget_id
      JOIN owners o ON o.id = b.owner_id
      LEFT JOIN account_transactions tx ON tx.budget_category_month_id = bcm.id
+       AND (tx.ignored IS NOT TRUE)
      WHERE bcm.month = ?
      GROUP BY bcm.id, bcm.budget_category_id, bcm.amount_cents, bc.name, b.name, o.name`,
 		[month]
