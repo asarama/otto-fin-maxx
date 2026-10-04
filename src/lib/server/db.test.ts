@@ -2,9 +2,11 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DuckDBInstance } from '@duckdb/node-api';
 import { createTestDb } from './test-helpers';
 import { seedDefaults } from './seed';
 import { getDb } from './db';
+import { MIGRATIONS_SQL } from './schema';
 
 const cache = globalThis as unknown as {
 	__financeDbConnection?: unknown;
@@ -54,6 +56,19 @@ describe('schema + seed', () => {
 		await seedDefaults(conn);
 		const owners = await conn.runAndReadAll('SELECT count(*) AS n FROM owners');
 		expect(Number(owners.getRowObjects()[0].n)).toBe(3);
+	});
+
+	it('migrates an existing account_transactions table to add ignored', async () => {
+		const instance = await DuckDBInstance.create(':memory:');
+		const conn = await instance.connect();
+		await conn.run('CREATE TABLE account_transactions (id TEXT)');
+		await conn.run(MIGRATIONS_SQL);
+		await conn.run(MIGRATIONS_SQL);
+		const res = await conn.runAndReadAll(
+			`SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'account_transactions' AND column_name = 'ignored'`
+		);
+		expect(res.getRowObjects()).toHaveLength(1);
 	});
 });
 

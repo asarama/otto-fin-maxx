@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS account_transactions (
   vendor_id TEXT REFERENCES vendors(id),
   budget_category_month_id TEXT REFERENCES budget_category_months(id),
   assignment_status TEXT NOT NULL DEFAULT 'unreviewed',
+  ignored BOOLEAN NOT NULL DEFAULT false,
   created_at TEXT NOT NULL
 );
 
@@ -79,4 +80,8 @@ CREATE TABLE IF NOT EXISTS rule_vendors (
   vendor_id TEXT NOT NULL REFERENCES vendors(id),
   PRIMARY KEY (rule_id, vendor_id)
 );
+`;
+
+export const MIGRATIONS_SQL = `
+ALTER TABLE account_transactions ADD COLUMN IF NOT EXISTS ignored BOOLEAN DEFAULT false;
 `;

@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DuckDBInstance, type DuckDBConnection } from '@duckdb/node-api';
-import { SCHEMA_SQL } from './schema';
+import { SCHEMA_SQL, MIGRATIONS_SQL } from './schema';
 
 const g = globalThis as unknown as {
 	__financeDbConnection?: DuckDBConnection;
@@ -18,6 +18,7 @@ async function initDb(): Promise<DuckDBConnection> {
 	const instance = await DuckDBInstance.create(path);
 	const conn = await instance.connect();
 	await conn.run(SCHEMA_SQL);
+	await conn.run(MIGRATIONS_SQL);
 	g.__financeDbConnection = conn;
 	return conn;
 }
